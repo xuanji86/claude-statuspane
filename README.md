@@ -1,34 +1,41 @@
+<div align="center">
+
 # statuspane
+
+**A floating status card for Claude Code.**<br>
+Model, context, rate limits, cost and branch at a glance, plus progress bars any script can feed.
+
+[![Version](https://img.shields.io/badge/version-1.0.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
+[![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
 **English** · [中文](README.zh-CN.md)
 
-A small floating status card at the right edge, just above the Claude Code prompt — a
-[mod](https://code.claude.com/docs/en/plugins/mods/overview) (a plugin of function hooks), so it
-needs no `statusLine` script.
+<img src="assets/card.svg" alt="The status card above the Claude Code prompt" width="720">
 
-```
-                                   ╭────────────────────────────────────╮
-                                   │ Opus 5.5 (1M) · high  [⚙][ ▾ hide ]│
-                                   │ ctx ███░░░░░░░░░ 22% 222k/1M        │
-                                   │ 5h 23% ↻2h41m · wk 61% ↻2d4h        │
-                                   │ ~/proj · ⎇ main · $3.12             │
-                                   │ build ██████░░░░░░ 50% 3/6          │
-                                   ╰────────────────────────────────────╯
-> _
-```
+</div>
 
-- **Model · effort**, **context** fill with tokens used / window, **5-hour and weekly limits** with
-  reset countdowns, **directory · git branch**, **session cost**.
-- **Progress rows** that any script or mod can feed (see [Progress API](#progress-api)), updated
-  every second and gone on their own when their source stops reporting.
-- **Clickable**: `[ ▾ hide ]` folds the card to a `[ ◂ status ]` button that brings it back;
-  `[⚙]` opens the settings page in place.
-- **Settings** (saved across sessions): show or hide each line, bar width (6–24), language
-  (English / 中文).
-- Long directories keep their last segments (`…/web/frontend`, 20 columns) and long branches are
-  cut, so the card stays narrow (at most 50 columns inside).
-- Colors follow the usual statusline thresholds: green below 60 %, yellow from 60 %, red from 85 %
-  (context: 50 % / 80 %).
+## Why
+
+Claude Code's `statusLine` is one line of text from a shell script. **statuspane** is a
+[mod](https://code.claude.com/docs/en/plugins/mods/overview): a small card that lives just above the
+prompt, reads Claude Code's own session figures, and can be clicked — no script to write.
+
+## Features
+
+| | |
+| --- | --- |
+| **Model · effort** | The model in use and its reasoning effort |
+| **Context** | A fill bar with tokens used / window (`222k/1M`) |
+| **Rate limits** | 5-hour and weekly use with reset countdowns (`↻2h41m`) |
+| **Where you are** | Directory and git branch, shortened so the card stays narrow |
+| **Session cost** | What this session has cost so far |
+| **Progress rows** | Bars any script or mod can feed, refreshed every second ([Progress API](#progress-api)) |
+| **Clickable** | Hide, show and settings are buttons; everything works with the mouse |
+| **Settings** | Pick the lines you want, the bar width and the language (English / 中文); saved across sessions |
+
+Colors follow the usual statusline thresholds: green under 60 %, yellow from 60 %, red from 85 %
+(context: 50 % / 80 %).
 
 ## Install
 
@@ -39,28 +46,53 @@ Needs a Claude Code build with mods (function hooks).
 /plugin install statuspane@claude-statuspane
 ```
 
-Or from a terminal:
+<details>
+<summary>From a terminal instead</summary>
 
 ```sh
 claude plugin marketplace add xuanji86/claude-statuspane
 claude plugin install statuspane@claude-statuspane
 ```
 
-The card draws when the terminal is at least 70 columns wide. It replaces nothing: if you also
-have a `statusLine` configured, both show; remove the `statusLine` entry from
-`~/.claude/settings.json` if you want the card only.
+</details>
+
+The card appears in terminals at least 70 columns wide. It adds to your setup and replaces nothing:
+a configured `statusLine` keeps showing; delete it from `~/.claude/settings.json` if you want the
+card alone.
 
 ## Use
 
-| Do | What happens |
-| --- | --- |
-| Click `[ ▾ hide ]` / `[ ◂ status ]` | Fold the card to one button / bring it back |
-| Click `[⚙]` | Settings page: click a line to switch it, `[ - ]` `[ + ]` bar width, language, `[ ✓ Done ]` |
-| `/statuspane` | Same as hide / show |
+<table>
+<tr>
+<td width="50%" valign="top">
 
-The `-` at the band's top right is Claude Code's own "hide plugin panel". It hides the whole band,
-and only its keybinding brings it back (default `ctrl+x ctrl+a`). If your terminal does not pass
-`ctrl+x` chords through, bind it to one key in `~/.claude/keybindings.json`:
+**Settings** — click `⚙`
+
+<img src="assets/settings.svg" alt="The settings page" width="100%">
+
+Click a line to switch it, `[ - ]` / `[ + ]` for the bar width (6–24), pick a language, then
+`✓ Done`.
+
+</td>
+<td width="50%" valign="top">
+
+**Hidden** — click `▾ hide`
+
+<img src="assets/hidden.svg" alt="The card folded to one button" width="100%">
+
+One button stays at the right edge; click `◂ status` to bring the card back. `/statuspane` does the
+same from the prompt.
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>Tip:</b> the <code>-</code> at the panel's corner, and a one-key shortcut</summary>
+
+The `-` at the top right of the panel is Claude Code's own "hide plugin panel". It hides the whole
+panel, and only its keybinding brings it back (default `ctrl+x ctrl+a`). If your terminal doesn't
+pass `ctrl+x` chords through, bind it to one key in `~/.claude/keybindings.json`:
 
 ```json
 {
@@ -70,71 +102,82 @@ and only its keybinding brings it back (default `ctrl+x ctrl+a`). If your termin
 }
 ```
 
-(`ctrl+s` is stash by default; the example moves stash to `ctrl+q`.)
+`ctrl+s` is "stash" by default, so the example moves stash to `ctrl+q`.
+
+</details>
 
 ## Progress API
 
-Two ways in. Rows are sorted by id; at most 5 show.
+Show your own progress on the card, from any language or from another mod. Rows are sorted by id,
+at most five show, and each one goes away by itself once its source stops reporting.
 
-### 1. A JSON file — from any language
+### From any script: a JSON file
 
-Write `~/.claude/statuspane/progress/<id>.json` (or `$STATUSPANE_PROGRESS_DIR/<id>.json`):
+Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
+`STATUSPANE_PROGRESS_DIR`):
 
 ```json
 { "label": "build", "percent": 42.5, "text": "3/7 · 1.2/min", "ttl": 300 }
 ```
 
-| Field | | |
+| Field | Type | |
 | --- | --- | --- |
 | `label` | string | Shown before the bar, up to 24 characters (defaults to the id) |
 | `percent` | number, optional | 0–100. Leave it out for a text-only row |
 | `text` | string, optional | Shown after the bar, up to 60 characters |
-| `ttl` | seconds, optional | The row disappears this long after the file was last written (default 300) |
+| `ttl` | seconds, optional | How long the row stays after the file was last written (default 300) |
 
-`<id>` is letters, digits, `.`, `_`, `-`. Write to a temporary file and rename it over the target so
-the card never reads half a file. Delete the file to remove the row at once. Ready-made helpers:
-[`examples/report-progress.sh`](examples/report-progress.sh) and
-[`examples/report_progress.py`](examples/report_progress.py).
+`<id>` uses letters, digits, `.`, `_` and `-`. Write to a temporary file and rename it over the
+target so the card never reads half a file; delete the file to remove the row at once.
+
+Ready-made helpers in [`examples/`](examples):
 
 ```sh
 examples/report-progress.sh build "build" 42.5 "3/7"
 ```
 
-The card reads only `*.json` files of at most 4 KB in that folder, takes text verbatim minus control
-and bidi characters, and never runs anything from them.
+```python
+from report_progress import report, clear
+report("my-job", "my job", 40, "4/10")
+clear("my-job")
+```
 
-### 2. `$.statuspane` — from another mod
+### From another mod: `$.statuspane`
 
-List the plugin under `dependencies` in your mod's `plugin.json` (its types are then laid into your
-`.claude-plugin/types/statuspane/`), and call:
+List `statuspane` under `dependencies` in your mod's `plugin.json` (its types are then laid into
+your `.claude-plugin/types/statuspane/`), and call:
 
 ```ts
 await $.statuspane.progress({ id: 'my-job', label: 'my job', percent: 40, text: '4/10', ttl: 120 })
 await $.statuspane.clear('my-job')
 ```
 
-Same fields as the file. A row from a mod lives in memory: report again after a reload of
-statuspane.
+Same fields as the file. Rows from a mod live in memory, so report again after statuspane reloads.
 
 ### Already reporting
 
-- [ainiee-translate](https://github.com/xuanji86/ainiee-translate-skill) v1.14+: `progress --watch` / `--line` write its translation progress.
+- [**ainiee-translate**](https://github.com/xuanji86/ainiee-translate-skill) v1.14+ — `progress --watch` / `--line` show translation progress.
 
-## Privacy
+## Privacy and safety
 
-Everything stays local. The mod reads Claude Code's own session figures, runs
-`git branch --show-current` in the session's directory, and lists the progress folder.
+Everything stays on your machine. statuspane reads Claude Code's own session figures, runs
+`git branch --show-current` in the session's directory, and lists the progress folder. From that
+folder it reads only `*.json` files of at most 4 KB, strips control and bidi characters from their
+text, bounds every field, and never runs anything they contain.
 
 ## Develop
 
 ```sh
+git clone https://github.com/xuanji86/claude-statuspane
+cd claude-statuspane
 claude plugin validate .
 claude plugin test .
 claude --plugin-dir .        # or add the folder to CLAUDE_CODE_PLUGIN_DIRS
 ```
 
-Saving a file reloads the mod in a session that loaded it from the folder.
+A session that loaded the mod from its folder reloads it each time you save a file. Issues and pull
+requests are welcome.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © Anji Xu
