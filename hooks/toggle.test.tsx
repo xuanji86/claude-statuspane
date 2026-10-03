@@ -270,3 +270,15 @@ test('a push follows the repo it reported, not the session folder', async ($, on
   expect(calls.some(c => c.startsWith('gh run list -R o/other --branch main'))).toBe(true)
   expect(calls.some(c => c.startsWith('gh run list -R o/r --branch main'))).toBe(false)
 })
+
+test('the desktop app draws no card, only what lies beneath', async ($, on) => {
+  mock.clock(on)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e as never) as { Text: (p: object) => unknown }
+    return h(Text as never, {}, 'from below') as never
+  })
+  const ui = await $.ui.mount({ ...(BAND as object), surface: 'desktop' } as never)
+  expect(await ui.find({ type: 'Text', text: /from below/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeUndefined()
+  await ui.unmount()
+})

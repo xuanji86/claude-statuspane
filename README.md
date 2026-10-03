@@ -5,7 +5,7 @@
 **A floating status card for Claude Code.**<br>
 Model, context, rate limits, cost and branch at a glance, your GitHub CI and deploys, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.3.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -58,7 +58,7 @@ claude plugin install statuspane@claude-statuspane
 
 </details>
 
-The card appears in terminals at least 70 columns wide. It adds to your setup and replaces nothing:
+The card appears in terminals at least 70 columns wide; the desktop app shows none, since it has its own. It adds to your setup and replaces nothing:
 a configured `statusLine` keeps showing; delete it from `~/.claude/settings.json` if you want the
 card alone.
 

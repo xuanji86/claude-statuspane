@@ -662,6 +662,8 @@ export const register: Register = on => {
 
   // The band's rows hold the card at the right edge, just above the prompt.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // The desktop app shows model, effort and context on its own, so the card is terminal-only there.
+    if (e.surface === 'desktop') return next(e)
     lastBand = { columns: e.props.bodyColumns, hasSurvey: e.props.hasSurvey }
     if (e.props.hasSurvey || e.props.bodyColumns < MIN_COLUMNS) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
