@@ -8,7 +8,6 @@ Model, context, rate limits, cost and branch at a glance, your GitHub CI and dep
 [![Version](https://img.shields.io/badge/version-1.3.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
-[![reach](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-reach.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 
 **English** · [中文](README.zh-CN.md)
@@ -187,6 +186,10 @@ Same fields as the file. Rows from a mod live in memory, so report again after s
 - [**ainiee-translate**](https://github.com/xuanji86/ainiee-translate-skill) v1.14+ — `progress --watch` / `--line` show translation progress.
 
 ## Privacy and safety
+
+Its footprint, as the [awesome-claude-code-mods](https://github.com/karanb192/awesome-claude-code-mods) scan reads it from `claude plugin validate`:
+
+[![reach](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-reach.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 
 Everything stays on your machine. statuspane reads Claude Code's own session figures, runs
 `git branch --show-current` in the session's directory, and lists the progress folder. Only with a

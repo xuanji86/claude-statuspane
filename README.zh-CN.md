@@ -8,7 +8,6 @@
 [![Version](https://img.shields.io/badge/version-1.3.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
-[![reach](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-reach.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 
 [English](README.md) · **中文**（卡片界面为英文）
@@ -171,6 +170,10 @@ await $.statuspane.clear('my-job')
 - [**ainiee-translate**](https://github.com/xuanji86/ainiee-translate-skill) v1.14+：`progress --watch` / `--line` 会显示翻译进度。
 
 ## 隐私与安全
+
+[awesome-claude-code-mods](https://github.com/karanb192/awesome-claude-code-mods) 的扫描按 `claude plugin validate` 测出的权限范围:
+
+[![reach](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-reach.svg)](https://github.com/karanb192/awesome-claude-code-mods)
 
 所有数据都留在本机。statuspane 只读取 Claude Code 自己的会话数据，在会话目录里运行 `git branch --show-current`，并读取进度目录。只有打开 CI 开关后才会联网：读取 `origin` 远程地址，用你自己登录的 `gh` 对该仓库运行 `gh run list` / `gh run view`（合并后还有 `gh pr view`）。它只读该目录里不超过 64 KB 的 `*.json` 文件，会去掉文字里的控制字符、双向控制符和零宽字符，截断每个字段的长度，不会执行文件里的任何内容。
 
