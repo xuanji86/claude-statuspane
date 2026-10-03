@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，能看 GitHub CI 和部署状态，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.1.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -23,9 +23,9 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 
 | | |
 | --- | --- |
-| **模型 · effort** | 当前模型和推理强度 |
-| **上下文** | 进度条，加上已用 / 上限（`222k/1M`） |
-| **额度** | 5 小时和每周用量，附重置倒计时（`↻2h41m`） |
+| **模型 · effort** | 当前模型、Claude 是否在工作，以及推理强度刻度（`▮▮▮▯▯ high`） |
+| **上下文** | 刻度条，加上已用 / 上限（`▰▰▰▱▱▱ 42% 222k/1M`） |
+| **额度** | 5 小时和 7 天用量，各带一个小刻度条，附重置倒计时（`↻2h41m`） |
 | **当前位置** | 目录和 git 分支，太长会自动缩短，卡片不会被撑宽 |
 | **会话花费** | 本次会话到目前为止的花费 |
 | **GitHub CI** | 当前分支最新的 Actions 运行，以及推送后触发的运行，包括部署（见 [GitHub CI](#github-ci)） |
@@ -33,7 +33,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 | **全程鼠标** | 收起、展开、设置都是按钮 |
 | **设置** | 选择要显示哪些行、进度条长度，跨会话保存 |
 
-颜色沿用常见 statusline 的阈值：低于 60% 绿、60% 起黄、85% 起红（上下文为 50% / 80%）。
+配色取自 Claude Code 自己的主题，深色、浅色、色盲友好主题都会跟着变：刻度条平时是 Claude 橙，60% 起变主题的警告色，85% 起变错误色（上下文为 50% / 80%）。
 
 ## 安装
 
@@ -111,7 +111,7 @@ claude plugin install statuspane@claude-statuspane
 
 | | |
 | --- | --- |
-| `⟳ test · 1m20s` | 黄色：运行中，显示正在跑的 job 和已用时间 |
+| `⟳ test · 1m20s` | 橙色：运行中，显示正在跑的 job 和已用时间 |
 | `⟳ deploying · 1m20s` | 名字里带 *deploy* 的 job 正在跑 |
 | `✓ deployed · 3m ago` | 绿色：跑完了，且 *deploy* job 成功（没有部署 job 时显示 `✓ passed`） |
 | `✗ test failed · 3m ago` | 红色：失败的 job（或 workflow） |
@@ -137,7 +137,7 @@ claude plugin install statuspane@claude-statuspane
 | `percent` | 数字，可选 | 0–100。不填就只显示文字 |
 | `text` | 字符串，可选 | 进度条后的文字，最多 60 个字符 |
 | `ttl` | 秒，可选 | 文件最后一次写入后保留多久（默认 300） |
-| `state` | 字符串，可选 | `running`（黄）、`ok`（绿）或 `error`（红），给进度条和文字上色 |
+| `state` | 字符串，可选 | `running`（橙）、`ok`（绿）或 `error`（红），给刻度条和文字上色 |
 
 `<id>` 只能用字母、数字、`.`、`_`、`-`。请先写临时文件再改名覆盖，避免卡片读到写了一半的文件；删掉文件，这一行会立刻消失。
 

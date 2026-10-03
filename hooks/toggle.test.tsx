@@ -164,3 +164,14 @@ test('the branch switch shows the latest run of the branch the session is on', a
   expect(await ui.find({ type: 'Text', text: /✗ pytest failed · 50m ago/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('the card says whether Claude is working, in its accent while it is', async ($, on) => {
+  mock.clock(on)
+  const idle = await $.ui.mount(BAND)
+  expect(await idle.find({ type: 'Text', text: /^ {3}○ idle$/ })).toBeDefined()
+  await idle.unmount()
+  const busy = await $.ui.mount({ ...(BAND as object), props: { ...(BAND as { props: object }).props, isWorking: true } } as never)
+  const working = (await busy.find({ type: 'Text', text: /^● working$/ })) as unknown as { props: { color?: string } } | undefined
+  expect(working?.props.color).toBe('claude')
+  await busy.unmount()
+})

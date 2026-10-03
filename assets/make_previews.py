@@ -4,8 +4,9 @@ import html, os, unicodedata
 
 OUT = os.path.dirname(os.path.abspath(__file__))
 CW, LH, FS, PAD = 8.4, 19, 14, 18
-C = dict(bg='#1c1c27', fg='#c8d0f0', dim='#8e8e8e', border='#686b80', mag='#d53996', yel='#f3d300',
-         grn='#329d4a', grn_dim='#2b703e', cyan='#0098bc', accent='#a9b1fa')
+C = dict(bg='#1c1c27', fg='#c8d0f0', dim='#8e8e8e', border='#686b80', accent='#a9b1fa',
+         # Claude Code's dark theme, by the keys the card uses
+         claude='#d77757', success='#4eba65', warning='#ffc107', error='#ff6b80', subtle='#505050')
 
 
 def w(s):
@@ -28,10 +29,10 @@ def runs(col0, row, parts):
 
 
 def frame(col, row, cols, rows):
-    """A rounded border around `rows` text rows of `cols` columns (one column of padding inside)."""
+    """A rounded border, in Claude's accent, around `rows` text rows of `cols` columns (one column of padding inside)."""
     x, y = PAD + (col - 1.5) * CW, PAD + row * LH - 4
     return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{(cols + 3) * CW:.1f}" height="{(rows + 1) * LH + 2}" '
-            f'rx="7" fill="none" stroke="{C["border"]}" stroke-width="1.2"/>')
+            f'rx="7" fill="none" stroke="{C["claude"]}" stroke-width="1.2"/>')
 
 
 def draw(name, total_cols, total_rows, items):
@@ -43,9 +44,9 @@ def draw(name, total_cols, total_rows, items):
         f.write(doc)
 
 
-def bar(pct, width=12):
-    filled = round(pct * width / 100)
-    return [('█' * filled, 'grn'), ('░' * (width - filled), 'grn_dim')]
+def gauge(pct, width, color='claude'):
+    on = int(pct * width / 100 + 0.5)
+    return [('▰' * on, color), ('▱' * (width - on), 'subtle')]
 
 
 def scene(name, lines, inner, framed=True, buttons_row0=()):
@@ -77,18 +78,20 @@ sep = (' · ', 'dim')
 
 def card_lines(novel):
     return [
-        [('Opus 5.5 (1M)', 'mag'), sep, ('high', 'yel')],
-        [('ctx ', 'dim'), *bar(15), (' 15%', 'grn'), (' 148k/1M', 'dim')],
-        [('5h ', 'dim'), ('9%', 'grn'), (' ↻0h45m', 'dim'), sep, ('wk ', 'dim'), ('67%', 'yel'), (' ↻19h25m', 'dim')],
-        [('~/proj', 'cyan'), sep, ('⎇ main', 'mag'), sep, ('$0.87', 'grn')],
-        [(f'📖 {novel} ', 'dim'), *bar(64), (' 64%', 'grn'), (' 768/1200', 'fg')],
-        [('osa-api main ', 'dim'), ('⟳ deploying · 1m20s', 'yel')],
-        [('proj main ', 'dim'), ('✓ passed · 3m ago', 'grn')],
+        [('Opus 5.5 (1M)', 'claude', 1)],
+        [('effort ', 'dim'), ('▮▮▮▯▯ ', 'claude'), ('high', 'claude', 1)],
+        [('ctx ', 'dim'), *gauge(15, 12), (' 15%', 'fg', 1), (' 148k/1M', 'dim')],
+        [('5h ', 'dim'), *gauge(9, 5), (' 9% ↻0h45m', 'dim'), ('   ', 'fg'),
+         ('7d ', 'dim'), *gauge(67, 5, 'warning'), (' 67%', 'warning'), (' ↻19h25m', 'dim')],
+        [('~/proj', 'fg'), sep, ('⎇ main', 'fg'), sep, ('$0.87', 'fg')],
+        [(f'📖 {novel} ', 'dim'), *gauge(64, 12), (' 64%', 'fg'), (' 768/1200', 'fg')],
+        [('osa-api main ', 'dim'), ('⟳ deploying · 1m20s', 'claude')],
+        [('proj main ', 'dim'), ('✓ passed · 3m ago', 'success')],
     ]
 
 
 def settings_lines(t):
-    rows = [[(t[0], 'fg', 1)]] + [[(('☐ ' if i in (5, 7) else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:10])]
+    rows = [[(t[0], 'claude', 1)]] + [[(('☐ ' if i in (5, 7) else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:10])]
     rows.append([(t[10] + ' ', 'fg'), ('[ - ]', 'fg'), (' 12 ', 'fg'), ('[ + ]', 'fg')])
     done = f'[ {t[11]} ]'
     rows.append([(' ' * (34 - w(done)), 'fg'), (done, 'accent', 1)])
@@ -97,6 +100,6 @@ def settings_lines(t):
 
 EN = ['Status settings', 'Model · effort', 'Context bar', '5h / week limits', 'Reset countdowns',
       'Directory · branch', 'Session cost', 'Progress rows', 'CI · this branch', 'CI · after a push', 'Bar width', '✓ Done']
-scene('card.svg', card_lines('novel'), 40, buttons_row0=[('[ ⚙ ]', 'dim'), ('[ ▾ hide ]', 'dim')])
+scene('card.svg', card_lines('novel'), 41, buttons_row0=[('● working', 'claude'), ('  ⚙  ', 'dim'), ('▾ hide', 'dim')])
 scene('settings.svg', settings_lines(EN), 34)
 scene('hidden.svg', [[('[ ◂ status ]', 'dim')]], w('[ ◂ status ]'), framed=False)

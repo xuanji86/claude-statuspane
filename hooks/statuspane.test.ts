@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, bar, cardLines, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, cardLines, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
 import type { Job, Run } from './register'
+import { gauge } from './register'
 
 const NOW = Date.parse('2026-10-02T00:00:00Z')
 const text = (lines: { text: string }[][]) => lines.map(l => l.map(p => p.text).join(''))
+const bar = (pct: number, width: number) => gauge(pct, width).on + gauge(pct, width).off
 const BASE = { dir: '~', branch: null, model: null, effort: null, progress: [] }
 const FULL = {
   dir: '~/x', branch: 'develop', model: 'claude-opus-5-5[1m]', effort: 'high', progress: [],
@@ -14,18 +16,26 @@ const FULL = {
 
 describe('card', () => {
   test('placeholders before the first response', async () => {
-    expect(text(cardLines(BASE, NOW))).toEqual(['—', `ctx ${bar(0, 12)} —`, '5h — · wk —', '~'])
+    expect(text(cardLines(BASE, NOW))).toEqual(['—', `ctx ${bar(0, 12)} —`, '5h —   7d —', '~'])
   })
-  test('full card with colors from the classic statusline thresholds', async () => {
+  test('full card in Claude Code\'s colors, past the classic statusline thresholds', async () => {
     const lines = cardLines(FULL, NOW)
     expect(text(lines)).toEqual([
-      'Opus 5.5 (1M) · high',
-      `ctx ${bar(62, 12)} 62% 620k/1M`,
-      '5h 30% ↻2h15m · wk 91% ↻2d5h',
+      'Opus 5.5 (1M)',
+      'effort ▮▮▮▯▯ high',
+      'ctx ▰▰▰▰▰▰▰▱▱▱▱▱ 62% 620k/1M',
+      '5h ▰▰▱▱▱ 30% ↻2h15m   7d ▰▰▰▰▰ 91% ↻2d5h',
       '~/x · ⎇ develop · $1.50',
     ])
-    expect(lines[1]?.[1]?.color).toBe('yellow')
-    expect(lines[2]?.find(p => p.text === '91%')?.color).toBe('red')
+    expect(lines[0]?.[0]).toMatchObject({ color: 'claude', bold: true })
+    expect(lines[2]?.[1]?.color).toBe('warning') // 62% of the context
+    expect(lines[2]?.[2]?.color).toBe('subtle')
+    expect(lines[3]?.[1]?.color).toBe('claude') // 30% of the 5h limit
+    expect(lines[3]?.find(p => p.text === ' 91%')?.color).toBe('error')
+  })
+  test('an effort the gauge does not know reads as its word alone', async () => {
+    expect(text(cardLines({ ...FULL, effort: '3' }, NOW))[1]).toBe('effort 3')
+    expect(text(cardLines({ ...FULL, effort: 'max' }, NOW))[1]).toBe('effort ▮▮▮▮▮ max')
   })
   test('model ids read as their display names', async () => {
     expect(prettyModel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
@@ -39,15 +49,15 @@ describe('card', () => {
 describe('prefs', () => {
   test('switched-off lines and parts are left out', async () => {
     const p = { ...DEFAULT_PREFS, model: false, eta: false, location: false }
-    expect(text(cardLines(FULL, NOW, p))).toEqual([`ctx ${bar(62, 12)} 62% 620k/1M`, '5h 30% · wk 91%', '$1.50'])
+    expect(text(cardLines(FULL, NOW, p))).toEqual([`ctx ${bar(62, 12)} 62% 620k/1M`, '5h ▰▰▱▱▱ 30%   7d ▰▰▰▰▰ 91%', '$1.50'])
   })
   test('bar width follows the setting and widens the card', async () => {
     const lines = cardLines(FULL, NOW, { ...DEFAULT_PREFS, barWidth: 24 })
-    expect(text(lines)[1]).toBe(`ctx ${bar(62, 24)} 62% 620k/1M`)
-    expect(cardWidth(lines)).toBe(text(lines)[1]?.length)
+    expect(text(lines)[2]).toBe(`ctx ${bar(62, 24)} 62% 620k/1M`)
+    expect(cardWidth(lines)).toBe(text(lines)[2]?.length)
   })
   test('the card is wide enough for the first line and its buttons', async () => {
-    expect(cardWidth(cardLines(FULL, NOW))).toBeGreaterThanOrEqual('Opus 5.5 (1M) · high'.length + 16)
+    expect(cardWidth(cardLines(FULL, NOW))).toBeGreaterThanOrEqual('Opus 5.5 (1M) ● working  ⚙  ▾ hide'.length)
   })
   test('stored prefs are read over the defaults, bad values dropped', async () => {
     expect(loadPrefs(undefined)).toEqual(DEFAULT_PREFS)
@@ -82,9 +92,10 @@ describe('progress rows', () => {
     const only = { ...DEFAULT_PREFS, model: false, ctx: false, limits: false, location: false }
     const draw = (state?: 'running' | 'ok' | 'error') =>
       cardLines({ ...BASE, progress: [{ id: 'a', label: 'ci', percent: 50, text: 'x', state, expiresAt: NOW + 1 }] }, NOW, only)[0]
-    expect(draw('error')?.map(p => p.color)).toEqual([undefined, 'red', 'red'])
-    expect(draw('running')?.map(p => p.color)).toEqual([undefined, 'yellow', 'yellow'])
-    expect(draw()?.map(p => p.color)).toEqual([undefined, 'green', undefined])
+    expect(draw('error')?.map(p => p.color)).toEqual([undefined, 'error', 'subtle', undefined, 'error'])
+    expect(draw('ok')?.map(p => p.color)).toEqual([undefined, 'success', 'subtle', undefined, 'success'])
+    expect(draw('running')?.map(p => p.color)).toEqual([undefined, 'claude', 'subtle', undefined, 'claude'])
+    expect(draw()?.map(p => p.color)).toEqual([undefined, 'claude', 'subtle', undefined, undefined])
   })
   test('wide characters count two columns and control characters are stripped', async () => {
     expect(cols('ab中文')).toBe(6)

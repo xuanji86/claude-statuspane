@@ -5,7 +5,7 @@
 **A floating status card for Claude Code.**<br>
 Model, context, rate limits, cost and branch at a glance, your GitHub CI and deploys, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.1.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -25,9 +25,9 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 
 | | |
 | --- | --- |
-| **Model · effort** | The model in use and its reasoning effort |
-| **Context** | A fill bar with tokens used / window (`222k/1M`) |
-| **Rate limits** | 5-hour and weekly use with reset countdowns (`↻2h41m`) |
+| **Model · effort** | The model in use, whether Claude is working, and its reasoning effort on a gauge (`▮▮▮▯▯ high`) |
+| **Context** | A gauge with tokens used / window (`▰▰▰▱▱▱ 42% 222k/1M`) |
+| **Rate limits** | 5-hour and 7-day use, each on a small gauge, with reset countdowns (`↻2h41m`) |
 | **Where you are** | Directory and git branch, shortened so the card stays narrow |
 | **Session cost** | What this session has cost so far |
 | **GitHub CI** | The branch's latest Actions run and the runs a push sets off, deploys included ([GitHub CI](#github-ci)) |
@@ -35,8 +35,8 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 | **Clickable** | Hide, show and settings are buttons; everything works with the mouse |
 | **Settings** | Pick the lines you want and the bar width; saved across sessions |
 
-Colors follow the usual statusline thresholds: green under 60 %, yellow from 60 %, red from 85 %
-(context: 50 % / 80 %).
+It is drawn in Claude Code's own theme colors, so it follows dark, light and colorblind themes: gauges in Claude's
+accent, turning to the theme's warning color from 60 % and its error color from 85 % (context: 50 % / 80 %).
 
 ## Install
 
@@ -121,7 +121,7 @@ Each row reads `<repo> <branch>` and then:
 
 | | |
 | --- | --- |
-| `⟳ test · 1m20s` | yellow: under way, with the jobs running now and the time so far |
+| `⟳ test · 1m20s` | accent: under way, with the jobs running now and the time so far |
 | `⟳ deploying · 1m20s` | a job whose name has *deploy* in it is running |
 | `✓ deployed · 3m ago` | green: done, and a *deploy* job succeeded (`✓ passed` when none ran) |
 | `✗ test failed · 3m ago` | red: the job (or workflow) that failed |
@@ -150,7 +150,7 @@ Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
 | `percent` | number, optional | 0–100. Leave it out for a text-only row |
 | `text` | string, optional | Shown after the bar, up to 60 characters |
 | `ttl` | seconds, optional | How long the row stays after the file was last written (default 300) |
-| `state` | string, optional | `running` (yellow), `ok` (green) or `error` (red): colors the bar and the text |
+| `state` | string, optional | `running` (accent), `ok` (green) or `error` (red): colors the gauge and the text |
 
 `<id>` uses letters, digits, `.`, `_` and `-`. Write to a temporary file and rename it over the
 target so the card never reads half a file; delete the file to remove the row at once.

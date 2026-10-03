@@ -1,4 +1,4 @@
-/** How a row is going, which colors it: running yellow, ok green, error red. */
+/** How a row is going, which colors it: running Claude's accent, ok green, error red. */
 export type StatuspaneState = 'running' | 'ok' | 'error'
 
 /**
@@ -16,7 +16,7 @@ export type StatuspaneProgress = {
   text?: string
   /** Seconds the row stays without a fresh report (default 300). */
   ttl?: number
-  /** Colors the bar and the text; leave it out for a green bar and plain text. */
+  /** Colors the gauge and the text; leave it out for a gauge in Claude's accent and plain text. */
   state?: StatuspaneState
 }
 

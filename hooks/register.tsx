@@ -23,7 +23,11 @@ const isSettingsOpen = atom({ plugin: 'statuspane', key: 'isSettingsOpen' } as c
 const CARD_WIDTH = 34 // inside the border, at least; a wider line widens the card
 const MAX_CARD_WIDTH = 50
 const MIN_COLUMNS = 70 // narrower than this the card would cover too much; draw nothing
-const BUTTONS_WIDTH = 16 // ' [ ⚙ ]' + '[ ▾ hide ]', drawn with chrome so the click targets are wide
+// Right of the first line, after a space: '● working', then the ' ⚙ ' and '▾ hide' buttons, each with room to click.
+const HEAD_RIGHT = '● working'
+const BUTTONS_WIDTH = HEAD_RIGHT.length + 2 + 3 + 1 + 6
+const LIMIT_GAUGE = 5 // cells of each limit's gauge
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 const PENDING = '—'
 const HIDDEN_RIGHT_PAD = 5 // clear of Claude Code's own [-] panel toggle, drawn at the band's top right
 const BAR_MIN = 6
@@ -55,11 +59,13 @@ type Switch = Exclude<keyof Prefs, 'barWidth'>
 // The settings page's switches, in the card's order.
 export const SWITCHES: Switch[] = ['model', 'ctx', 'limits', 'eta', 'location', 'cost', 'progress', 'ciBranch', 'ciPush']
 
-export type Part = { text: string; color?: string; dim?: boolean }
+export type Part = { text: string; color?: string; dim?: boolean; bold?: boolean }
 
-// Same thresholds as a classic statusline script: low green, getting high yellow, nearly out red.
-export const usedColor = (pct: number) => (pct >= 85 ? 'red' : pct >= 60 ? 'yellow' : 'green')
-const ctxColor = (pct: number) => (pct >= 80 ? 'red' : pct >= 50 ? 'yellow' : 'green')
+// Claude Code's own colors, by theme key, so the card follows the person's theme: the accent, then the
+// theme's warning and error past a classic statusline script's thresholds.
+const levelColor = (pct: number, warnAt: number, errAt: number) => (pct >= errAt ? 'error' : pct >= warnAt ? 'warning' : 'claude')
+export const usedColor = (pct: number) => levelColor(pct, 60, 85)
+const ctxColor = (pct: number) => levelColor(pct, 50, 80)
 
 // Terminal columns a string takes: East Asian wide and fullwidth characters and emoji take two.
 // lazy: range table, not full Unicode East Asian Width; upgrade to a generated table if a script draws wrong.
@@ -107,7 +113,7 @@ export const clean = (v: unknown, max: number) =>
   typeof v === 'string' ? [...v.replace(UNSAFE, '')].slice(0, max).join('').trim() : ''
 
 const ID = /^[A-Za-z0-9._-]{1,64}$/
-const STATE_COLOR = { running: 'yellow', ok: 'green', error: 'red' } as const
+const STATE_COLOR = { running: 'claude', ok: 'success', error: 'error' } as const
 const isState = (v: unknown): v is State => typeof v === 'string' && Object.hasOwn(STATE_COLOR, v)
 
 // A progress report as a row, or null when it is not one; `seenAt` is when it was written.
@@ -144,9 +150,14 @@ export const fmtEta = (resetsAt: string | undefined, now: number) => {
   return d > 0 ? `${d}d${h}h` : `${h}h${m}m`
 }
 
-export const bar = (pct: number, width: number) => {
-  const filled = Math.min(width, Math.max(0, Math.round((pct * width) / 100)))
-  return '█'.repeat(filled) + '░'.repeat(width - filled)
+// A gauge as Claude Code draws one: ▰ used, ▱ left.
+export const gauge = (pct: number, width: number) => {
+  const on = Math.min(width, Math.max(0, Math.round((pct * width) / 100)))
+  return { on: '▰'.repeat(on), off: '▱'.repeat(width - on) }
+}
+const gaugeParts = (pct: number, width: number, color: string): Part[] => {
+  const g = gauge(pct, width)
+  return [{ text: g.on, color }, { text: g.off, color: 'subtle' }]
 }
 
 // "claude-opus-5-5[1m]" -> "Opus 5.5 (1M)", "claude-opus-4-20250514" -> "Opus 4"; anything else as given.
@@ -175,15 +186,31 @@ export const fromUsage = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost
 const limit = (label: string, l: Limit | undefined, now: number, showEta: boolean): Part[] => {
   if (!l) return [{ text: `${label} `, dim: true }, { text: PENDING, dim: true }]
   const eta = showEta ? fmtEta(l.resetsAt, now) : ''
-  return [{ text: `${label} `, dim: true }, { text: `${Math.round(l.pct)}%`, color: usedColor(l.pct) }, ...(eta ? [{ text: ` ↻${eta}`, dim: true }] : [])]
+  const color = usedColor(l.pct)
+  return [
+    { text: `${label} `, dim: true },
+    ...gaugeParts(l.pct, LIMIT_GAUGE, color),
+    { text: ` ${Math.round(l.pct)}%`, ...(color === 'claude' ? { dim: true } : { color }) },
+    ...(eta ? [{ text: ` ↻${eta}`, dim: true }] : []),
+  ]
 }
 
 const progressLine = (r: Row, width: number): Part[] => {
   const color = r.state && STATE_COLOR[r.state]
   return [
     { text: `${r.label} `, dim: true },
-    ...(r.percent !== undefined ? [{ text: `${bar(r.percent, width)} ${Math.round(r.percent)}%`, color: color ?? 'green' }] : []),
+    ...(r.percent !== undefined ? [...gaugeParts(r.percent, width, color ?? 'claude'), { text: ` ${Math.round(r.percent)}%` }] : []),
     ...(r.text ? [{ text: r.percent !== undefined ? ` ${r.text}` : r.text, color }] : []),
+  ]
+}
+
+// "effort ▮▮▮▯▯ high"; a level it does not know, as a word alone.
+const effortLine = (effort: string): Part[] => {
+  const n = EFFORTS.indexOf(effort) + 1
+  return [
+    { text: 'effort ', dim: true },
+    ...(n ? [{ text: `${'▮'.repeat(n)}${'▯'.repeat(EFFORTS.length - n)} `, color: 'claude' }] : []),
+    { text: effort, color: 'claude', bold: true },
   ]
 }
 
@@ -191,20 +218,22 @@ const progressLine = (r: Row, width: number): Part[] => {
 export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS): Part[][] => {
   const sep: Part = { text: ' · ', dim: true }
   const lines: Part[][] = []
-  if (p.model)
-    lines.push([{ text: f.model ? prettyModel(f.model) : PENDING, color: 'magenta' }, ...(f.effort ? [sep, { text: f.effort, color: 'yellow' }] : [])])
+  if (p.model) {
+    lines.push([{ text: f.model ? prettyModel(f.model) : PENDING, color: 'claude', bold: true }])
+    if (f.effort) lines.push(effortLine(f.effort))
+  }
   if (p.ctx) {
     if (f.ctxPct !== undefined) {
       const k = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`)
       const tokens = f.ctxTokens !== undefined && f.ctxWindow ? ` ${k(f.ctxTokens)}/${k(f.ctxWindow)}` : ''
-      lines.push([{ text: 'ctx ', dim: true }, { text: `${bar(f.ctxPct, p.barWidth)} ${Math.round(f.ctxPct)}%`, color: ctxColor(f.ctxPct) }, { text: tokens, dim: true }])
-    } else lines.push([{ text: 'ctx ', dim: true }, { text: `${bar(0, p.barWidth)} ${PENDING}`, dim: true }])
+      lines.push([{ text: 'ctx ', dim: true }, ...gaugeParts(f.ctxPct, p.barWidth, ctxColor(f.ctxPct)), { text: ` ${Math.round(f.ctxPct)}%`, bold: true }, { text: tokens, dim: true }])
+    } else lines.push([{ text: 'ctx ', dim: true }, { text: gauge(0, p.barWidth).off, color: 'subtle' }, { text: ` ${PENDING}`, dim: true }])
   }
-  if (p.limits) lines.push([...limit('5h', f.fiveHour, now, p.eta), sep, ...limit('wk', f.week, now, p.eta)])
+  if (p.limits) lines.push([...limit('5h', f.fiveHour, now, p.eta), { text: '   ' }, ...limit('7d', f.week, now, p.eta)])
   const place: Part[][] = [
-    ...(p.location ? [[{ text: f.dir ? shortDir(f.dir) : PENDING, color: 'cyan' }]] : []),
-    ...(p.location && f.branch ? [[{ text: `⎇ ${fit(f.branch, 16)}`, color: 'magenta' }]] : []),
-    ...(p.cost && f.costUsd !== undefined ? [[{ text: `$${f.costUsd.toFixed(2)}`, color: 'green' }]] : []),
+    ...(p.location ? [[{ text: f.dir ? shortDir(f.dir) : PENDING }]] : []),
+    ...(p.location && f.branch ? [[{ text: `⎇ ${fit(f.branch, 16)}` }]] : []),
+    ...(p.cost && f.costUsd !== undefined ? [[{ text: `$${f.costUsd.toFixed(2)}` }]] : []),
   ]
   if (place.length) lines.push(place.flatMap((parts, n) => (n > 0 ? [sep, ...parts] : parts)))
   if (p.progress)
@@ -585,7 +614,7 @@ export const register: Register = on => {
     const frame = (width: number, children: RenderChildren[]) =>
       withBelow(
         <Box justifyContent="flex-end" paddingRight={1}>
-          <Box width={width + 4} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+          <Box width={width + 4} flexDirection="column" borderStyle="round" borderColor="claude" paddingX={1}>
             {children}
           </Box>
         </Box>,
@@ -593,7 +622,7 @@ export const register: Register = on => {
 
     if (await read($, isSettingsOpen))
       return frame(CARD_WIDTH, [
-        <Text bold>{STRINGS.settings}</Text>,
+        <Text color="claude" bold>{STRINGS.settings}</Text>,
         SWITCHES.map(k => (
           <Button key={`pref-${k}`} label={`${p[k] ? '☑' : '☐'} ${STRINGS[k]}`} plain onPress={() => change(q => ({ ...q, [k]: !q[k] }))} />
         )),
@@ -610,24 +639,28 @@ export const register: Register = on => {
 
     const lines = cardLines(await read($, figures), await $.clock.now(), p)
     const { width, buttonsOwnRow } = layout(lines)
-    const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim}>{q.text}</Text>)
+    const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim} bold={q.bold}>{q.text}</Text>)
     const row = (parts: Part[], room: number) => (
       <Text wrap="truncate-end">
         {runs(parts)}
         {' '.repeat(Math.max(0, room - lineWidth(parts)))}
       </Text>
     )
+    // Whether Claude is working, as the reference's main box says it, then the buttons.
+    const working = e.props.isWorking
     const buttons = [
-      <Button key="settings" label="⚙" dimColor onPress={() => setSettingsOpen(true)} />,
-      <Button key="hide" label={STRINGS.hide} dimColor onPress={() => setHidden(true)} />,
+      <Text color={working ? 'claude' : undefined} dimColor={!working}>{(working ? HEAD_RIGHT : '○ idle').padStart(HEAD_RIGHT.length)}</Text>,
+      <Text> </Text>,
+      <Button key="settings" label=" ⚙ " plain dimColor hover={{ color: 'claude' }} onPress={() => setSettingsOpen(true)} />,
+      <Text> </Text>,
+      <Button key="hide" label={STRINGS.hide} plain dimColor hover={{ color: 'claude' }} onPress={() => setHidden(true)} />,
     ]
     const first = lines[0] ?? []
     const top = buttonsOwnRow ? (
-      <Box justifyContent="flex-end">{buttons}</Box>
+      <Box key="head" justifyContent="flex-end">{buttons}</Box>
     ) : (
-      <Box>
+      <Box key="head">
         {row(first, width - BUTTONS_WIDTH)}
-        <Text> </Text>
         {buttons}
       </Box>
     )

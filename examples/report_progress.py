@@ -18,7 +18,7 @@ import tempfile
 
 DEFAULT_DIR = "~/.claude/statuspane/progress"
 ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-STATES = ("running", "ok", "error")  # yellow, green, red
+STATES = ("running", "ok", "error")  # Claude's accent, green, red
 
 
 def progress_dir() -> str:
