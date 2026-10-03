@@ -37,7 +37,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 
 ## 安装
 
-需要支持 mod（函数 hooks）的 Claude Code 版本。
+需要 **Claude Code 2.1.287 或更高版本**（mod，即函数 hooks，从这个版本开始提供）；已在 2.1.288 上测试。mod 目前是早期功能，接口可能随版本变化，如果新版本导致卡片失效，这里会发修复版。
 
 ```text
 /plugin marketplace add xuanji86/claude-statuspane

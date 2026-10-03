@@ -40,7 +40,8 @@ Colors follow the usual statusline thresholds: green under 60 %, yellow from 60 
 
 ## Install
 
-Needs a Claude Code build with mods (function hooks).
+Needs **Claude Code 2.1.287 or later**, the release that brought mods (function hooks); tested on 2.1.288. Mods are
+early access: their API may change between releases, and a release that breaks the card gets a fix here.
 
 ```text
 /plugin marketplace add xuanji86/claude-statuspane
