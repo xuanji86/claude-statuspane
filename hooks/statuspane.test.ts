@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, cardLines, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, cardLines, compactNow, lineWidth, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
 import type { Job, Run } from './register'
 import { gauge } from './register'
 
@@ -23,7 +23,7 @@ describe('card', () => {
     expect(text(lines)).toEqual([
       'Opus 5.5 (1M)',
       'effort ▮▮▮▯▯ high',
-      'ctx ▰▰▰▰▰▰▰▱▱▱▱▱ 62% 620k/1M',
+      'ctx ▰▰▰▰▰▰▰▱▱▱▱▱ 62% 620k/1M  ⟲ compact',
       '5h ▰▰▱▱▱ 30% ↻2h15m   7d ▰▰▰▰▰ 91% ↻2d5h',
       '~/x · ⎇ develop · $1.50',
     ])
@@ -32,6 +32,14 @@ describe('card', () => {
     expect(lines[2]?.[2]?.color).toBe('subtle')
     expect(lines[3]?.[1]?.color).toBe('claude') // 30% of the 5h limit
     expect(lines[3]?.find(p => p.text === ' 91%')?.color).toBe('error')
+  })
+  test('the ⟲ compact button follows the context gauge: armed, then compacting', async () => {
+    const ctxLine = (state: 'armed' | 'running' | null) => cardLines(FULL, NOW, DEFAULT_PREFS, state && { state, at: NOW })[2]!
+    expect(text([ctxLine('armed')])[0]).toBe('ctx ▰▰▰▰▰▰▰▱▱▱▱▱ 62% 620k/1M  ⟲ confirm')
+    expect(ctxLine('armed').filter(q => q.press).map(q => q.text)).toEqual(['confirm'])
+    expect(text([ctxLine('running')])[0]).toBe('ctx ▰▰▰▰▰▰▰▱▱▱▱▱ 62% 620k/1M  ⟲ compacting…')
+    expect(ctxLine('running').some(q => q.press)).toBe(false) // nothing to press while it runs
+    expect(cardLines(BASE, NOW).flat().some(q => q.press)).toBe(false) // no context yet, nothing to compact
   })
   test('an effort the gauge does not know reads as its word alone', async () => {
     expect(text(cardLines({ ...FULL, effort: '3' }, NOW))[1]).toBe('effort 3')
@@ -49,11 +57,11 @@ describe('card', () => {
 describe('prefs', () => {
   test('switched-off lines and parts are left out', async () => {
     const p = { ...DEFAULT_PREFS, model: false, eta: false, location: false }
-    expect(text(cardLines(FULL, NOW, p))).toEqual([`ctx ${bar(62, 12)} 62% 620k/1M`, '5h ▰▰▱▱▱ 30%   7d ▰▰▰▰▰ 91%', '$1.50'])
+    expect(text(cardLines(FULL, NOW, p))).toEqual([`ctx ${bar(62, 12)} 62% 620k/1M  ⟲ compact`, '5h ▰▰▱▱▱ 30%   7d ▰▰▰▰▰ 91%', '$1.50'])
   })
   test('bar width follows the setting and widens the card', async () => {
     const lines = cardLines(FULL, NOW, { ...DEFAULT_PREFS, barWidth: 24 })
-    expect(text(lines)[2]).toBe(`ctx ${bar(62, 24)} 62% 620k/1M`)
+    expect(text(lines)[2]).toBe(`ctx ${bar(62, 24)} 62%  ⟲ compact`) // past the widest card the tokens give way, not the button
     expect(cardWidth(lines)).toBe(text(lines)[2]?.length)
   })
   test('the card is wide enough for the first line and its buttons', async () => {
@@ -200,5 +208,32 @@ describe('CI', () => {
   })
   test('spans read short', async () => {
     expect([fmtSpan(5_000, true), fmtSpan(80_000, true), fmtSpan(3_725_000, true), fmtSpan(3_725_000, false), fmtSpan(3 * 86_400_000, false)]).toEqual(['5s', '1m20s', '1h02m', '1h', '3d'])
+  })
+})
+
+describe('review fixes', () => {
+  test('a push report of blank lines parses at once, and a real one still parses', async () => {
+    const t = Date.now()
+    expect(pushedRefs('\n'.repeat(30_000) + ' \n'.repeat(10_000))).toEqual([])
+    expect(Date.now() - t).toBeLessThan(200)
+    expect(pushedRefs('To github.com:o/r.git\n   6386f32..e4f5a6b  main -> main\n * [new branch]      x -> x\n')).toEqual(['main', 'x'])
+  })
+  test('the compact button lapses: armed after 5 s, running after 10 min, either with the clock set back', async () => {
+    expect(compactNow({ state: 'armed', at: 1_000 }, 5_999)).toBe('armed')
+    expect(compactNow({ state: 'armed', at: 1_000 }, 6_000)).toBeNull()
+    expect(compactNow({ state: 'running', at: 0 }, 599_999)).toBe('running')
+    expect(compactNow({ state: 'running', at: 0 }, 600_000)).toBeNull()
+    expect(compactNow({ state: 'armed', at: 9_000 }, 1_000)).toBeNull()
+  })
+  test('a label is cut by columns, and a progress row keeps its percent on the card', async () => {
+    expect(cols(toRow({ label: '中'.repeat(30), percent: 5 }, NOW, 'a')!.label)).toBeLessThanOrEqual(24)
+    const row = { id: 'a', label: 'x'.repeat(24), percent: 100, expiresAt: NOW + 1 }
+    const line = cardLines({ ...BASE, progress: [row] }, NOW, { ...DEFAULT_PREFS, model: false, ctx: false, limits: false, location: false, barWidth: 24 })[0]!
+    expect(lineWidth(line)).toBeLessThanOrEqual(50)
+    expect(text([line])[0]).toMatch(/ 100%$/)
+  })
+  test('emoji terminals draw wide count two columns', async () => {
+    expect(['✅', '❌', '⚡', '⭐', '⌛'].map(cols)).toEqual([2, 2, 2, 2, 2])
+    expect(cols('✓✗⟳')).toBe(3)
   })
 })

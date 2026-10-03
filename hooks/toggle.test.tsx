@@ -175,3 +175,98 @@ test('the card says whether Claude is working, in its accent while it is', async
   expect(working?.props.color).toBe('claude')
   await busy.unmount()
 })
+
+test('⟲ compact asks once more, then runs /compact; unconfirmed, it disarms', async ($, on) => {
+  const clock = mock.clock(on)
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  const ran: unknown[] = []
+  on('command.run', { command: 'compact' }, ($, e) => (ran.push(e), { text: 'Compacted' }))
+  const ui = await $.ui.mount(BAND)
+  await $.session.measure({ context: { tokens: 620_000, window: 1_000_000, percent: 62 }, rateLimits: [], changed: ['context'] } as never)
+  await ui.press({ key: 'compact' })
+  expect(ran).toEqual([])
+  expect(await ui.find({ type: 'Button', text: /^confirm$/ })).toBeDefined()
+  await clock.advance(6_000)
+  expect(await ui.find({ type: 'Button', text: /⟲ compact/ })).toBeDefined() // not confirmed in time
+  await ui.press({ key: 'compact' })
+  await ui.press({ key: 'compact' })
+  expect(ran).toMatchObject([{ command: 'compact' }])
+  expect(await ui.find({ type: 'Button', text: /⟲ compact/ })).toBeDefined() // ready again once it ran
+  await ui.unmount()
+})
+
+test('a /compact the engine refuses to run says why in a toast', async ($, on) => {
+  mock.clock(on)
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  // nothing answers command.run, so $.command.run rejects (a compaction that runs and fails prints in the transcript)
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => (toasts.push((e as { text: string }).text), { value: undefined }) as never)
+  const ui = await $.ui.mount(BAND)
+  await $.session.measure({ context: { tokens: 20_000, window: 1_000_000, percent: 2 }, rateLimits: [], changed: ['context'] } as never)
+  await ui.press({ key: 'compact' })
+  await ui.press({ key: 'compact' })
+  expect(toasts.at(-1)).toMatch(/^Could not compact: /)
+  expect(await ui.find({ type: 'Button', text: /⟲ compact/ })).toBeDefined()
+  await ui.unmount()
+})
+
+const MEASURE = { context: { tokens: 620_000, window: 1_000_000, percent: 62 }, rateLimits: [], changed: ['context'] } as never
+
+test('two quick presses on confirm compact once', async ($, on) => {
+  const clock = mock.clock(on)
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  const ran: unknown[] = []
+  on('command.run', { command: 'compact' }, async ($, e) => (ran.push(e), await clock.sleep(1_000), { text: 'Compacted' }))
+  const ui = await $.ui.mount(BAND)
+  await $.session.measure(MEASURE)
+  await ui.press({ key: 'compact' })
+  const a = ui.press({ key: 'compact' }).catch(() => undefined)
+  const b = ui.press({ key: 'compact' }).catch(() => undefined)
+  await clock.advance(2_000)
+  await Promise.all([a, b])
+  expect(ran.length).toBe(1)
+  await ui.unmount()
+})
+
+test('an arming whose timer was lost (a reload) has lapsed: a lone press later arms, never compacts', async ($, on) => {
+  let t = 0
+  on('clock.now', () => ({ value: t }) as never)
+  on('clock.after', () => ({ deny: 'cancelled, as a reload cancels it' }) as never)
+  on('clock.every', () => ({ deny: 'no ticks' }) as never)
+  on('session.measure', ($, e) => ({ changed: e.changed }))
+  const ran: unknown[] = []
+  on('command.run', { command: 'compact' }, ($, e) => (ran.push(e), { text: 'Compacted' }))
+  const ui = await $.ui.mount(BAND)
+  await $.session.measure(MEASURE)
+  await ui.press({ key: 'compact' })
+  t += 60 * 60_000
+  await ui.press({ key: 'compact' })
+  expect(ran).toEqual([])
+  expect(await ui.find({ type: 'Button', text: /^confirm$/ })).toBeDefined() // armed afresh
+  await ui.unmount()
+})
+
+test('a push follows the repo it reported, not the session folder', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
+  const calls: string[] = []
+  on('store.get', () => ({ value: { ciPush: true } }) as never)
+  on('command.register', () => ({ value: { command: 'statuspane' } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1_000_000 }, rateLimits: [] } }) as never)
+  on('session.cwd', () => ({ value: '/w/r' }))
+  on('session.repo', () => ({ value: { root: '/w/r' } }) as never)
+  on('process.run', ($, e) => {
+    const argv = e.argv.join(' ')
+    calls.push(argv)
+    const out = argv === 'git remote get-url origin' ? 'git@github.com:o/r.git' : argv === 'git branch --show-current' ? 'main' : null
+    return { value: { exitCode: out === null ? 1 : 0, stdout: out ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('tool.call', () => ({ result: { stdout: '', stderr: 'To github.com:o/other.git\n   6386f32..e4f5a6b  main -> main', interrupted: false } }) as never)
+  mock.env(on, { HOME: '/home/u' })
+  await $.session.start({ cwd: '/w/r', surface: null, isInteractive: true } as never)
+  await $.tool.call({ tool: 'Bash', command: 'git -C ../other push' } as never)
+  await clock.advance(1_000)
+  expect(calls.some(c => c.startsWith('gh run list -R o/other --branch main'))).toBe(true)
+  expect(calls.some(c => c.startsWith('gh run list -R o/r --branch main'))).toBe(false)
+})

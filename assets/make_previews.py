@@ -80,7 +80,7 @@ def card_lines(novel):
     return [
         [('Opus 5.5 (1M)', 'claude', 1)],
         [('effort ', 'dim'), ('▮▮▮▯▯ ', 'claude'), ('high', 'claude', 1)],
-        [('ctx ', 'dim'), *gauge(15, 12), (' 15%', 'fg', 1), (' 148k/1M', 'dim')],
+        [('ctx ', 'dim'), *gauge(15, 12), (' 15%', 'fg', 1), (' 148k/1M', 'dim'), ('  ⟲ compact', 'dim')],
         [('5h ', 'dim'), *gauge(9, 5), (' 9% ↻0h45m', 'dim'), ('   ', 'fg'),
          ('7d ', 'dim'), *gauge(67, 5, 'warning'), (' 67%', 'warning'), (' ↻19h25m', 'dim')],
         [('~/proj', 'fg'), sep, ('⎇ main', 'fg'), sep, ('$0.87', 'fg')],

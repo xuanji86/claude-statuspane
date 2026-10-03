@@ -1,6 +1,6 @@
 {
   "name": "statuspane",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A floating status card above the Claude Code prompt — model, effort, context, 5h/week limits, cost, directory and branch, GitHub CI and deploys — with clickable settings and a progress-row API any script or mod can feed.",
   "author": { "name": "Anji Xu", "url": "https://github.com/xuanji86" },
   "homepage": "https://github.com/xuanji86/claude-statuspane",

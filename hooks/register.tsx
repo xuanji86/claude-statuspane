@@ -3,6 +3,7 @@ import type { EngineInterface, Register, RenderChildren, RenderElement, SessionU
 
 import type {
   Statuspane,
+  StatuspaneCompact as Compact,
   StatuspaneFigures as Figures,
   StatuspaneLimit as Limit,
   StatuspanePrefs as Prefs,
@@ -19,6 +20,7 @@ const figures = atom({ plugin: 'statuspane', key: 'figures' } as const, EMPTY)
 const isHidden = atom({ plugin: 'statuspane', key: 'isHidden' } as const, false)
 const prefs = atom({ plugin: 'statuspane', key: 'prefs' } as const, DEFAULT_PREFS)
 const isSettingsOpen = atom({ plugin: 'statuspane', key: 'isSettingsOpen' } as const, false)
+const compactAsk = atom({ plugin: 'statuspane', key: 'compact' } as const, null)
 
 const CARD_WIDTH = 34 // inside the border, at least; a wider line widens the card
 const MAX_CARD_WIDTH = 50
@@ -29,6 +31,8 @@ const BUTTONS_WIDTH = HEAD_RIGHT.length + 2 + 3 + 1 + 6
 const LIMIT_GAUGE = 5 // cells of each limit's gauge
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 const PENDING = '—'
+const CONFIRM_MS = 5_000 // a pressed ⟲ compact waits this long for the press that confirms it
+const COMPACT_MAX_MS = 600_000 // a compaction still marked running after this was lost (a reload mid-run)
 const HIDDEN_RIGHT_PAD = 5 // clear of Claude Code's own [-] panel toggle, drawn at the band's top right
 const BAR_MIN = 6
 const BAR_MAX = 24
@@ -59,13 +63,24 @@ type Switch = Exclude<keyof Prefs, 'barWidth'>
 // The settings page's switches, in the card's order.
 export const SWITCHES: Switch[] = ['model', 'ctx', 'limits', 'eta', 'location', 'cost', 'progress', 'ciBranch', 'ciPush']
 
-export type Part = { text: string; color?: string; dim?: boolean; bold?: boolean }
+// `press` makes the part a button: the one the card has in its lines, ⟲ compact.
+export type Part = { text: string; color?: string; dim?: boolean; bold?: boolean; press?: 'compact' }
 
 // Claude Code's own colors, by theme key, so the card follows the person's theme: the accent, then the
 // theme's warning and error past a classic statusline script's thresholds.
 const levelColor = (pct: number, warnAt: number, errAt: number) => (pct >= errAt ? 'error' : pct >= warnAt ? 'warning' : 'claude')
 export const usedColor = (pct: number) => levelColor(pct, 60, 85)
 const ctxColor = (pct: number) => levelColor(pct, 50, 80)
+
+// Emoji below the emoji block that terminals draw two columns wide (East Asian Width W): ⌛ ⚡ ✅ ❌ ⭐ …
+const EMOJI_WIDE: [number, number][] = [
+  [0x231a, 0x231b], [0x23e9, 0x23ec], [0x23f0, 0x23f0], [0x23f3, 0x23f3], [0x25fd, 0x25fe], [0x2614, 0x2615],
+  [0x2648, 0x2653], [0x267f, 0x267f], [0x2693, 0x2693], [0x26a1, 0x26a1], [0x26aa, 0x26ab], [0x26bd, 0x26be],
+  [0x26c4, 0x26c5], [0x26ce, 0x26ce], [0x26d4, 0x26d4], [0x26ea, 0x26ea], [0x26f2, 0x26f3], [0x26f5, 0x26f5],
+  [0x26fa, 0x26fa], [0x26fd, 0x26fd], [0x2705, 0x2705], [0x270a, 0x270b], [0x2728, 0x2728], [0x274c, 0x274c],
+  [0x274e, 0x274e], [0x2753, 0x2755], [0x2757, 0x2757], [0x2795, 0x2797], [0x27b0, 0x27b0], [0x27bf, 0x27bf],
+  [0x2b1b, 0x2b1c], [0x2b50, 0x2b50], [0x2b55, 0x2b55],
+]
 
 // Terminal columns a string takes: East Asian wide and fullwidth characters and emoji take two.
 // lazy: range table, not full Unicode East Asian Width; upgrade to a generated table if a script draws wrong.
@@ -76,7 +91,8 @@ export const cols = (s: string) => {
     const wide =
       (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
       (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) ||
-      (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd)
+      (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd) ||
+      (c >= 0x231a && c <= 0x2b55 && EMOJI_WIDE.some(([lo, hi]) => c >= lo && c <= hi))
     n += wide ? 2 : 1
   }
   return n
@@ -122,7 +138,7 @@ export const toRow = (raw: unknown, seenAt: number, fallbackId?: string): Row | 
   const o = raw as Record<string, unknown>
   const id = typeof o.id === 'string' && ID.test(o.id) ? o.id : fallbackId && ID.test(fallbackId) ? fallbackId : null
   if (!id) return null
-  const label = clean(o.label, 24) || id.slice(0, 24)
+  const label = fit(clean(o.label, 64), 24) || id.slice(0, 24)
   const percent = typeof o.percent === 'number' && Number.isFinite(o.percent) ? Math.min(100, Math.max(0, o.percent)) : undefined
   const text = clean(o.text, 60) || undefined
   if (percent === undefined && !text) return null
@@ -195,14 +211,29 @@ const limit = (label: string, l: Limit | undefined, now: number, showEta: boolea
   ]
 }
 
-const progressLine = (r: Row, width: number): Part[] => {
+const progressLine = (r: Row, barWidth: number): Part[] => {
   const color = r.state && STATE_COLOR[r.state]
+  // The gauge gives way before ' 100%' would pass the widest card.
+  const width = Math.max(4, Math.min(barWidth, MAX_CARD_WIDTH - cols(r.label) - 1 - 5))
   return [
     { text: `${r.label} `, dim: true },
     ...(r.percent !== undefined ? [...gaugeParts(r.percent, width, color ?? 'claude'), { text: ` ${Math.round(r.percent)}%` }] : []),
     ...(r.text ? [{ text: r.percent !== undefined ? ` ${r.text}` : r.text, color }] : []),
   ]
 }
+
+// The button's state as it stands at `now`: an arming or a run past its limit (lost to a reload, or a clock
+// set back) counts as none, so the button never sticks and a lone press never compacts.
+export const compactNow = (c: Compact, now: number): 'armed' | 'running' | null => {
+  if (!c || now < c.at) return null
+  return now - c.at < (c.state === 'armed' ? CONFIRM_MS : COMPACT_MAX_MS) ? c.state : null
+}
+
+// The ⟲ compact button after the context gauge: a press arms it, a second runs /compact.
+const compactParts = (state: 'armed' | 'running' | null): Part[] =>
+  state === 'running' ? [{ text: '  ⟲ compacting…', color: 'claude' }]
+  : state === 'armed' ? [{ text: '  ' }, { text: '⟲ ', color: 'warning' }, { text: 'confirm', press: 'compact' }]
+  : [{ text: '  ' }, { text: '⟲ compact', dim: true, press: 'compact' }]
 
 // "effort ▮▮▮▯▯ high"; a level it does not know, as a word alone.
 const effortLine = (effort: string): Part[] => {
@@ -215,7 +246,7 @@ const effortLine = (effort: string): Part[] => {
 }
 
 // Pure: the card's lines, each a run of colored parts, as the prefs pick them.
-export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS): Part[][] => {
+export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS, compact: Compact = null): Part[][] => {
   const sep: Part = { text: ' · ', dim: true }
   const lines: Part[][] = []
   if (p.model) {
@@ -226,7 +257,11 @@ export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS): Pa
     if (f.ctxPct !== undefined) {
       const k = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`)
       const tokens = f.ctxTokens !== undefined && f.ctxWindow ? ` ${k(f.ctxTokens)}/${k(f.ctxWindow)}` : ''
-      lines.push([{ text: 'ctx ', dim: true }, ...gaugeParts(f.ctxPct, p.barWidth, ctxColor(f.ctxPct)), { text: ` ${Math.round(f.ctxPct)}%`, bold: true }, { text: tokens, dim: true }])
+      const ctx: Part[] = [{ text: 'ctx ', dim: true }, ...gaugeParts(f.ctxPct, p.barWidth, ctxColor(f.ctxPct)), { text: ` ${Math.round(f.ctxPct)}%`, bold: true }]
+      const button = compactParts(compactNow(compact, now))
+      // The button stays whole: past the widest card, the tokens give way.
+      const withTokens = [...ctx, { text: tokens, dim: true }, ...button]
+      lines.push(lineWidth(withTokens) <= MAX_CARD_WIDTH ? withTokens : [...ctx, ...button])
     } else lines.push([{ text: 'ctx ', dim: true }, { text: gauge(0, p.barWidth).off, color: 'subtle' }, { text: ` ${PENDING}`, dim: true }])
   }
   if (p.limits) lines.push([...limit('5h', f.fiveHour, now, p.eta), { text: '   ' }, ...limit('7d', f.week, now, p.eta)])
@@ -324,14 +359,44 @@ async function readProgress($: EngineInterface) {
 }
 
 // Never rejects; runs off the turn's path (callers do not await it).
+// ⟲ compact: the first press arms it for CONFIRM_MS, the second runs /compact as if typed (queued until the
+// turn ends, when Claude is working). Clearing the context gauge is the session.compact hook's. One press is
+// handled at a time, so a double press never compacts twice.
+let compactBusy = false
+async function pressCompact($: EngineInterface) {
+  if (compactBusy) return
+  compactBusy = true
+  try {
+    const now = await $.clock.now()
+    const state = compactNow(await read($, compactAsk), now)
+    if (state === 'running') return
+    if (state !== 'armed') {
+      await update($, compactAsk, () => ({ state: 'armed', at: now }))
+      // Redraws the button once the arming lapses; were this timer lost, the arming still reads as lapsed.
+      $.clock.after(CONFIRM_MS, () => void update($, compactAsk, c => (c?.state === 'armed' && c.at === now ? null : c)))
+      return
+    }
+    await update($, compactAsk, () => ({ state: 'running', at: now }))
+    try {
+      await $.command.run({ command: 'compact', args: '' })
+    } catch (err) {
+      $.ui.toast(`Could not compact: ${clean(err instanceof Error ? err.message : String(err), 120)}`)
+    } finally {
+      await update($, compactAsk, () => null)
+    }
+  } finally {
+    compactBusy = false
+  }
+}
+
 async function refresh($: EngineInterface) {
   try {
     const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
     const cwd = await $.session.cwd()
-    const dir = home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd
+    const dir = clean(home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd, 400)
     const repo = await $.session.repo()
     const b = repo ? await $.process.run(['git', 'branch', '--show-current'], { cwd, timeoutMs: 3000 }).catch(() => null) : null
-    const branch = (b && b.exitCode === 0 && b.stdout.trim()) || null
+    const branch = (b && b.exitCode === 0 && clean(b.stdout, 200)) || null
     await update($, figures, f => ({ ...f, dir, branch }))
     const repoSlug = branch ? await repoHere($) : null
     ciHere = repoSlug && branch ? { repo: repoSlug, branch } : null
@@ -373,7 +438,8 @@ export const repoSlug = (url: string) => {
 
 // The refs a `git push` updated, from its report: "abc..def  main -> main", "* [new branch]  x -> x".
 export const pushedRefs = (output: string) =>
-  [...output.matchAll(/^\s*[+*]?\s*(?:[0-9a-f]{4,}\.\.\.?[0-9a-f]{4,}|\[new (?:branch|tag)\])\s+\S+\s+->\s+(\S+)/gm)].map(m => m[1] as string)
+  // [ \t], never \s: \s spans lines, and on output of blank lines the pattern backtracks for minutes.
+  [...output.matchAll(/^[ \t]*[+*]?[ \t]*(?:[0-9a-f]{4,}\.\.\.?[0-9a-f]{4,}|\[new (?:branch|tag)\])[ \t]+\S+[ \t]+->[ \t]+(\S+)/gm)].map(m => m[1] as string)
 
 // The commit's runs on a branch: the newest commit's, scheduled and bot-dispatched runs left out.
 // lazy: looks at the 40 newest runs; a branch where schedules crowd out a push needs a per-event query.
@@ -492,7 +558,10 @@ async function followPush($: EngineInterface, command: string, output: string) {
   try {
     if (!(await read($, prefs)).ciPush) return
     const url = /github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/.exec(command)
-    const repo = url?.[1] ?? /(?:^|\s)(?:-R|--repo)[=\s]+(\S+)/.exec(command)?.[1] ?? (await repoHere($))
+    // The repo the push reported ("To github.com:o/r.git"), not the session's folder: a push may run elsewhere.
+    const pushedTo = /^To (\S+)/m.exec(output)?.[1]
+    const repo =
+      url?.[1] ?? /(?:^|\s)(?:-R|--repo)[=\s]+(\S+)/.exec(command)?.[1] ?? (pushedTo && repoSlug(pushedTo)) ?? (await repoHere($))
     if (!repo) return
     const branches = /\bgit\b[^;&|]*\bpush\b/.test(command) ? pushedRefs(output) : []
     if (/\bgh\s+pr\s+merge\b/.test(command)) {
@@ -533,6 +602,7 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'statuspane', description: 'Hide or show the status card' })
+    await update($, compactAsk, () => null) // a press or a run the last module left behind (state outlives a reload)
     const stored = await $.store.get('prefs').catch(() => undefined)
     await update($, prefs, () => loadPrefs(stored))
     const model = await $.session.model()
@@ -637,15 +707,29 @@ export const register: Register = on => {
         </Box>,
       ])
 
-    const lines = cardLines(await read($, figures), await $.clock.now(), p)
+    const lines = cardLines(await read($, figures), await $.clock.now(), p, await read($, compactAsk))
     const { width, buttonsOwnRow } = layout(lines)
     const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim} bold={q.bold}>{q.text}</Text>)
-    const row = (parts: Part[], room: number) => (
-      <Text wrap="truncate-end">
-        {runs(parts)}
-        {' '.repeat(Math.max(0, room - lineWidth(parts)))}
-      </Text>
-    )
+    const pad = (parts: Part[], room: number) => ' '.repeat(Math.max(0, room - lineWidth(parts)))
+    // A line holding a button is a row of its own; the others one Text, cut at the card's edge.
+    const row = (parts: Part[], room: number) =>
+      parts.some(q => q.press) ? (
+        <Box key="ctx-line">
+          {parts.map(q =>
+            q.press ? (
+              <Button key={q.press} label={q.text} plain dimColor={q.dim} hover={{ color: 'claude' }} onPress={() => pressCompact($)} />
+            ) : (
+              <Text color={q.color} dimColor={q.dim} bold={q.bold}>{q.text}</Text>
+            ),
+          )}
+          <Text>{pad(parts, room)}</Text>
+        </Box>
+      ) : (
+        <Text wrap="truncate-end">
+          {runs(parts)}
+          {pad(parts, room)}
+        </Text>
+      )
     // Whether Claude is working, as the reference's main box says it, then the buttons.
     const working = e.props.isWorking
     const buttons = [

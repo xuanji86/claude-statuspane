@@ -11,6 +11,7 @@ Or from a shell:  python3 report_progress.py <id> <label> [percent] [text] [ttl-
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -35,14 +36,14 @@ def report(id: str, label: str, percent: float | None = None, text: str = "", tt
     folder = progress_dir()
     os.makedirs(folder, exist_ok=True)
     item = {"label": label[:24], "text": text[:60], "ttl": int(ttl)}
-    if percent is not None:
+    if percent is not None and math.isfinite(float(percent)):  # NaN or Infinity would make the file invalid JSON
         item["percent"] = float(percent)
     if state:
         item["state"] = state
     fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{id}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(item, f, ensure_ascii=False)
+            json.dump(item, f, ensure_ascii=False, allow_nan=False)
         os.replace(tmp, os.path.join(folder, f"{id}.json"))  # atomic: the card never reads half a file
     except BaseException:
         if os.path.exists(tmp):

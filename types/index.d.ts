@@ -1,3 +1,6 @@
+/** The ⟲ compact button: pressed once (armed) or compacting, and since when. */
+export type StatuspaneCompact = { state: 'armed' | 'running'; at: number } | null
+
 /** How a row is going, which colors it: running Claude's accent, ok green, error red. */
 export type StatuspaneState = 'running' | 'ok' | 'error'
 
@@ -70,6 +73,8 @@ declare module 'claude-code' {
       isHidden: boolean
       prefs: StatuspanePrefs
       isSettingsOpen: boolean
+      /** The ⟲ compact button: pressed once and waiting for the confirming press, or compacting. */
+      compact: StatuspaneCompact
     }
   }
 }

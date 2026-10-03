@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，能看 GitHub CI 和部署状态，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.2.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -24,7 +24,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 | | |
 | --- | --- |
 | **模型 · effort** | 当前模型、Claude 是否在工作，以及推理强度刻度（`▮▮▮▯▯ high`） |
-| **上下文** | 刻度条，加上已用 / 上限（`▰▰▰▱▱▱ 42% 222k/1M`） |
+| **上下文** | 刻度条，加上已用 / 上限（`▰▰▰▱▱▱ 42% 222k/1M`），后面的 `⟲ compact` 点一下、再点 `confirm` 即执行 `/compact`（Claude 正在工作时，等这一轮结束再压缩） |
 | **额度** | 5 小时和 7 天用量，各带一个小刻度条，附重置倒计时（`↻2h41m`） |
 | **当前位置** | 目录和 git 分支，太长会自动缩短，卡片不会被撑宽 |
 | **会话花费** | 本次会话到目前为止的花费 |
