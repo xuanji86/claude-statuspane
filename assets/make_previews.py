@@ -1,120 +1,108 @@
-# python3 assets/make_previews.py — draws the README mockups of the card as SVG: every text run placed and sized by terminal column.
+# python3 assets/make_previews.py — draws the README previews of the card, matched to a real
+# terminal (dark theme): every run placed and sized by terminal column.
 import html, os, unicodedata
+
 OUT = os.path.dirname(os.path.abspath(__file__))
-CW, LH, FS = 8.4, 20, 14
-C = dict(bg='#1b1d23', fg='#d7dae0', dim='#7f848e', border='#4b5263', mag='#c678dd', yel='#e5c07b',
-         grn='#98c379', cyan='#56b6c2', red='#e06c75', btn='#3a3f4b', accent='#61afef')
+CW, LH, FS, PAD = 8.4, 19, 14, 18
+C = dict(bg='#1c1c27', fg='#c8d0f0', dim='#8e8e8e', border='#686b80', mag='#d53996', yel='#f3d300',
+         grn='#329d4a', grn_dim='#2b703e', cyan='#0098bc', accent='#a9b1fa')
+
 
 def w(s):
     return sum(2 if unicodedata.east_asian_width(ch) in 'WF' else 1 for ch in s)
 
-def run(x, y, text, color, bold=False):
-    t = html.escape(text)
-    b = ' font-weight="700"' if bold else ''
-    return (f'<text x="{x:.1f}" y="{y}" fill="{C[color]}"{b} textLength="{w(text) * CW:.1f}" '
-            f'lengthAdjust="spacingAndGlyphs">{t}</text>')
 
-def line(x, y, parts):
-    out, col = [], 0
-    for text, color, *rest in parts:
+def runs(col0, row, parts):
+    """parts: (text, color[, bold]) laid left to right from column col0 on text row `row`."""
+    out, col = [], col0
+    for text, color, *bold in parts:
         body = text.strip()
         if body:
             lead = len(text) - len(text.lstrip())
-            out.append(run(x + (col + lead) * CW, y, body, color, bool(rest)))
+            x, y = PAD + (col + lead) * CW, PAD + 14 + row * LH
+            b = ' font-weight="700"' if bold else ''
+            out.append(f'<text x="{x:.1f}" y="{y}" fill="{C[color]}"{b} textLength="{w(body) * CW:.1f}" '
+                       f'lengthAdjust="spacingAndGlyphs">{html.escape(body)}</text>')
         col += w(text)
     return out, col
 
-def button(x, y, label, primary=False):
-    width = (w(label) + 2) * CW
-    fill = C['accent'] if primary else C['btn']
-    fg = '#1b1d23' if primary else C['fg']
-    return [f'<rect x="{x:.1f}" y="{y - 14}" width="{width:.1f}" height="19" rx="4" fill="{fill}"/>',
-            f'<text x="{x + CW:.1f}" y="{y}" fill="{fg}" textLength="{w(label) * CW:.1f}" lengthAdjust="spacingAndGlyphs">{html.escape(label)}</text>'], width
 
-def svg(name, width, height, body):
-    doc = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" '
-           f'font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="{FS}">'
-           f'<rect width="{width}" height="{height}" rx="10" fill="{C["bg"]}"/>'
-           f'<circle cx="20" cy="18" r="5.5" fill="#ff5f57"/><circle cx="38" cy="18" r="5.5" fill="#febc2e"/><circle cx="56" cy="18" r="5.5" fill="#28c840"/>'
-           + ''.join(body) + '</svg>')
-    open(os.path.join(OUT, name), 'w').write(doc)
+def frame(col, row, cols, rows):
+    """A rounded border around `rows` text rows of `cols` columns (one column of padding inside)."""
+    x, y = PAD + (col - 1.5) * CW, PAD + row * LH - 4
+    return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{(cols + 3) * CW:.1f}" height="{(rows + 1) * LH + 2}" '
+            f'rx="7" fill="none" stroke="{C["border"]}" stroke-width="1.2"/>')
 
-def card(name, rows, buttons, title_parts, inner_cols, transcript, width=720):
-    body = []
-    y = 56
-    for parts in transcript:
-        b, _ = line(24, y, parts); body += b; y += LH
-    top = y + 6
-    card_w = (inner_cols + 2) * CW + 16
-    x0 = width - 24 - card_w
-    h = (len(rows) + 1) * LH + 14
-    body.append(f'<rect x="{x0:.1f}" y="{top}" width="{card_w:.1f}" height="{h}" rx="8" fill="none" stroke="{C["border"]}" stroke-width="1.2"/>')
-    tx = x0 + 8 + CW
-    ty = top + 22
-    b, _ = line(tx, ty, title_parts); body += b
-    bx = x0 + card_w - 8 - CW
-    for label, primary in reversed(buttons):
-        bw = (w(label) + 2) * CW
-        bx -= bw
-        b, _ = button(bx, ty, label, primary); body += b
-        bx -= 6
-    for i, parts in enumerate(rows):
-        b, _ = line(tx, ty + (i + 1) * LH, parts); body += b
-    py = top + h + 28
-    body.append(run(24, py, '>', 'accent', True))
-    body.append(f'<rect x="{24 + 2 * CW:.1f}" y="{py - 13}" width="{CW:.1f}" height="17" fill="{C["fg"]}" opacity="0.75"/>')
-    svg(name, width, py + 22, body)
+
+def draw(name, total_cols, total_rows, items):
+    width, height = PAD * 2 + total_cols * CW, PAD * 2 + total_rows * LH
+    doc = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.0f}" height="{height:.0f}" '
+           f'viewBox="0 0 {width:.0f} {height:.0f}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" '
+           f'font-size="{FS}"><rect width="100%" height="100%" rx="10" fill="{C["bg"]}"/>' + ''.join(items) + '</svg>')
+    with open(os.path.join(OUT, name), 'w', encoding='utf-8') as f:
+        f.write(doc)
+
+
+def bar(pct, width=12):
+    filled = round(pct * width / 100)
+    return [('█' * filled, 'grn'), ('░' * (width - filled), 'grn_dim')]
+
+
+def scene(name, lines, inner, framed=True, buttons_row0=()):
+    """lines: rows of parts; the card sits at the right of a 64-column terminal, the prompt below."""
+    total = 64
+    col0 = total - inner - 3
+    items = []
+    items += runs(total - 3, 0, [('[-]', 'dim')])[0]                       # Claude Code's own panel toggle
+    top = 1 if framed else 0                                               # a folded card shares the toggle's row
+    if not framed:
+        col0 = total - inner - 5
+    if framed:
+        items.append(frame(col0, top, inner, len(lines)))
+    for i, parts in enumerate(lines):
+        r, used = runs(col0, top + i, parts)
+        items += r
+        if i == 0 and buttons_row0:
+            bw = sum(w(t) for t, *_ in buttons_row0)
+            items += runs(col0 + inner - bw, top, buttons_row0)[0]
+    prompt = top + len(lines) + 1
+    items.append(f'<line x1="{PAD}" y1="{PAD + prompt * LH - 2}" x2="{PAD + total * CW:.1f}" y2="{PAD + prompt * LH - 2}" stroke="{C["border"]}" stroke-width="1"/>')
+    items += runs(0, prompt, [('>', 'fg', 1)])[0]
+    items.append(f'<rect x="{PAD + 2 * CW:.1f}" y="{PAD + prompt * LH + 2}" width="{CW:.1f}" height="16" fill="{C["fg"]}" opacity="0.7"/>')
+    draw(name, total, prompt + 1, items)
+
 
 sep = (' · ', 'dim')
-transcript = [
-    [('● ', 'grn'), ('Updated the parser and ran the suite: 48 passed.', 'fg')],
-    [('  Ready for the next step.', 'dim')],
-]
-card('card.svg', [
-    [('ctx ', 'dim'), ('███░░░░░░░░░ 22%', 'grn'), (' 222k/1M', 'dim')],
-    [('5h ', 'dim'), ('23%', 'grn'), (' ↻2h41m', 'dim'), sep, ('wk ', 'dim'), ('61%', 'yel'), (' ↻2d4h', 'dim')],
-    [('~/proj', 'cyan'), sep, ('⎇ main', 'mag'), sep, ('$3.12', 'grn')],
-    [('build ', 'dim'), ('██████░░░░░░ 50%', 'grn'), (' 3/6', 'fg')],
-    [('📖 novel ', 'dim'), ('████████░░░░ 64%', 'grn'), (' 768/1200', 'fg')],
-], [('⚙', False), ('▾ hide', False)], [('Opus 5.5 (1M)', 'mag'), sep, ('high', 'yel')], 40, transcript)
-
-card('settings.svg', [
-    [('☑ Model · effort', 'fg')],
-    [('☑ Context bar', 'fg')],
-    [('☑ 5h / week limits', 'fg')],
-    [('☑ Reset countdowns', 'fg')],
-    [('☑ Directory · branch', 'fg')],
-    [('☐ Session cost', 'dim')],
-    [('☑ Progress rows', 'fg')],
-    [('Bar width  ', 'fg'), ('[ - ]', 'accent'), (' 12 ', 'fg'), ('[ + ]', 'accent')],
-    [('Language   ', 'fg'), ('[ English ]', 'accent'), (' ', 'fg'), ('[ 中文 ]', 'dim')],
-], [('✓ Done', True)], [('Status settings', 'fg', True)], 34, [])
-
-card('hidden.svg', [], [('◂ status', False)], [], 10, transcript)
 
 
-transcript_zh = [
-    [('● ', 'grn'), ('已更新解析器并跑完测试：48 个全部通过。', 'fg')],
-    [('  可以继续下一步了。', 'dim')],
-]
-card('card-zh.svg', [
-    [('ctx ', 'dim'), ('███░░░░░░░░░ 22%', 'grn'), (' 222k/1M', 'dim')],
-    [('5h ', 'dim'), ('23%', 'grn'), (' ↻2h41m', 'dim'), sep, ('wk ', 'dim'), ('61%', 'yel'), (' ↻2d4h', 'dim')],
-    [('~/proj', 'cyan'), sep, ('⎇ main', 'mag'), sep, ('$3.12', 'grn')],
-    [('build ', 'dim'), ('██████░░░░░░ 50%', 'grn'), (' 3/6', 'fg')],
-    [('📖 小说 ', 'dim'), ('████████░░░░ 64%', 'grn'), (' 768/1200', 'fg')],
-], [('⚙', False), ('▾ 收起', False)], [('Opus 5.5 (1M)', 'mag'), sep, ('high', 'yel')], 40, transcript_zh)
+def card_lines(novel):
+    return [
+        [('Opus 5.5 (1M)', 'mag'), sep, ('high', 'yel')],
+        [('ctx ', 'dim'), *bar(15), (' 15%', 'grn'), (' 148k/1M', 'dim')],
+        [('5h ', 'dim'), ('9%', 'grn'), (' ↻0h45m', 'dim'), sep, ('wk ', 'dim'), ('67%', 'yel'), (' ↻19h25m', 'dim')],
+        [('~/proj', 'cyan'), sep, ('⎇ main', 'mag'), sep, ('$0.87', 'grn')],
+        [('build ', 'dim'), *bar(50), (' 50%', 'grn'), (' 3/6', 'fg')],
+        [(f'📖 {novel} ', 'dim'), *bar(64), (' 64%', 'grn'), (' 768/1200', 'fg')],
+    ]
 
-card('settings-zh.svg', [
-    [('☑ 模型 · effort', 'fg')],
-    [('☑ 上下文进度条', 'fg')],
-    [('☑ 5h / week 额度', 'fg')],
-    [('☑ 重置倒计时', 'fg')],
-    [('☑ 目录 · 分支', 'fg')],
-    [('☐ 会话花费', 'dim')],
-    [('☑ 进度条接入', 'fg')],
-    [('进度条长度 ', 'fg'), ('[ - ]', 'accent'), (' 12 ', 'fg'), ('[ + ]', 'accent')],
-    [('语言       ', 'fg'), ('[ English ]', 'dim'), (' ', 'fg'), ('[ 中文 ]', 'accent')],
-], [('✓ 完成', True)], [('状态卡设置', 'fg', True)], 34, [])
 
-card('hidden-zh.svg', [], [('◂ 状态', False)], [], 10, transcript_zh)
+def settings_lines(t, lang):
+    rows = [[(t[0], 'fg', 1)]] + [[(('☐ ' if i == 5 else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:8])]
+    rows.append([(t[8] + ' ', 'fg'), ('[ - ]', 'fg'), (' 12 ', 'fg'), ('[ + ]', 'fg')])
+    en, zh = ('accent', 'dim') if lang == 'en' else ('dim', 'accent')
+    rows.append([(t[9] + ' ', 'fg'), ('[ English ]', en, 1), ('[ 中文 ]', zh, 1)])
+    done = f'[ {t[10]} ]'
+    rows.append([(' ' * (34 - w(done)), 'fg'), (done, 'accent', 1)])
+    return rows
+
+
+EN = ['Status settings', 'Model · effort', 'Context bar', '5h / week limits', 'Reset countdowns',
+      'Directory · branch', 'Session cost', 'Progress rows', 'Bar width', 'Language', '✓ Done']
+ZH = ['状态卡设置', '模型 · effort', '上下文进度条', '5h / week 额度', '重置倒计时',
+      '目录 · 分支', '会话花费', '进度条接入', '进度条长度', '语言', '✓ 完成']
+
+for suffix, hide, show, novel, t, lang in (('', '▾ hide', '◂ status', 'novel', EN, 'en'),
+                                          ('-zh', '▾ 收起', '◂ 状态', '小说', ZH, 'zh')):
+    scene(f'card{suffix}.svg', card_lines(novel), 40, buttons_row0=[('[ ⚙ ]', 'dim'), (f'[ {hide} ]', 'dim')])
+    scene(f'settings{suffix}.svg', settings_lines(t, lang), 34)
+    scene(f'hidden{suffix}.svg', [[(f'[ {show} ]', 'dim')]], w(f'[ {show} ]'), framed=False)

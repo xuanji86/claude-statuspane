@@ -24,6 +24,7 @@ const MAX_CARD_WIDTH = 50
 const MIN_COLUMNS = 70 // narrower than this the card would cover too much; draw nothing
 const BUTTONS_WIDTH = 16 // ' [ ⚙ ]' + '[ ▾ hide ]', drawn with chrome so the click targets are wide
 const PENDING = '—'
+const HIDDEN_RIGHT_PAD = 5 // clear of Claude Code's own [-] panel toggle, drawn at the band's top right
 const BAR_MIN = 6
 const BAR_MAX = 24
 const MAX_PROGRESS_ROWS = 5
@@ -331,7 +332,7 @@ export const register: Register = on => {
     // Hidden: a one-row button stays at the right edge. Never pass here: a band handed back is not drawn again.
     if (await read($, isHidden))
       return (
-        <Box justifyContent="flex-end" paddingRight={1}>
+        <Box justifyContent="flex-end" paddingRight={HIDDEN_RIGHT_PAD}>
           <Button key="show" label={t.show} dimColor onPress={() => setHidden(false)} />
         </Box>
       )
