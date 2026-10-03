@@ -9,9 +9,9 @@
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
-[English](README.md) · **中文**
+[English](README.md) · **中文**（卡片界面为英文）
 
-<img src="assets/card-zh.svg" alt="输入框上方的状态卡" width="720">
+<img src="assets/card.svg" alt="输入框上方的状态卡" width="720">
 
 </div>
 
@@ -30,7 +30,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 | **会话花费** | 本次会话到目前为止的花费 |
 | **进度条接入** | 任何脚本或 mod 都能往卡片上加进度条，每秒刷新（见[进度接口](#进度接口)） |
 | **全程鼠标** | 收起、展开、设置都是按钮 |
-| **设置** | 选择要显示哪些行、进度条长度、语言（English / 中文），跨会话保存 |
+| **设置** | 选择要显示哪些行、进度条长度，跨会话保存 |
 
 颜色沿用常见 statusline 的阈值：低于 60% 绿、60% 起黄、85% 起红（上下文为 50% / 80%）。
 
@@ -63,18 +63,18 @@ claude plugin install statuspane@claude-statuspane
 
 **设置**：点 `⚙`
 
-<img src="assets/settings-zh.svg" alt="设置页" width="100%">
+<img src="assets/settings.svg" alt="设置页" width="100%">
 
-点某一行切换显示，`[ - ]` / `[ + ]` 调进度条长度（6–24），选择语言，最后点 `✓ 完成`。
+点某一行切换显示，`[ - ]` / `[ + ]` 调进度条长度（6–24），最后点 `✓ Done`。
 
 </td>
 <td width="50%" valign="top">
 
-**收起**：点 `▾ 收起`
+**收起**：点 `▾ hide`
 
-<img src="assets/hidden-zh.svg" alt="收起后只剩一个按钮" width="100%">
+<img src="assets/hidden.svg" alt="收起后只剩一个按钮" width="100%">
 
-右侧只留一个按钮，点 `◂ 状态` 展开。在输入框里输入 `/statuspane` 效果一样。
+右侧只留一个按钮，点 `◂ status` 展开。在输入框里输入 `/statuspane` 效果一样。
 
 </td>
 </tr>

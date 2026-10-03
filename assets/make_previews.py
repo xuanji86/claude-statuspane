@@ -86,23 +86,16 @@ def card_lines(novel):
     ]
 
 
-def settings_lines(t, lang):
+def settings_lines(t):
     rows = [[(t[0], 'fg', 1)]] + [[(('☐ ' if i == 5 else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:8])]
     rows.append([(t[8] + ' ', 'fg'), ('[ - ]', 'fg'), (' 12 ', 'fg'), ('[ + ]', 'fg')])
-    en, zh = ('accent', 'dim') if lang == 'en' else ('dim', 'accent')
-    rows.append([(t[9] + ' ', 'fg'), ('[ English ]', en, 1), ('[ 中文 ]', zh, 1)])
-    done = f'[ {t[10]} ]'
+    done = f'[ {t[9]} ]'
     rows.append([(' ' * (34 - w(done)), 'fg'), (done, 'accent', 1)])
     return rows
 
 
 EN = ['Status settings', 'Model · effort', 'Context bar', '5h / week limits', 'Reset countdowns',
-      'Directory · branch', 'Session cost', 'Progress rows', 'Bar width', 'Language', '✓ Done']
-ZH = ['状态卡设置', '模型 · effort', '上下文进度条', '5h / week 额度', '重置倒计时',
-      '目录 · 分支', '会话花费', '进度条接入', '进度条长度', '语言', '✓ 完成']
-
-for suffix, hide, show, novel, t, lang in (('', '▾ hide', '◂ status', 'novel', EN, 'en'),
-                                          ('-zh', '▾ 收起', '◂ 状态', '小说', ZH, 'zh')):
-    scene(f'card{suffix}.svg', card_lines(novel), 40, buttons_row0=[('[ ⚙ ]', 'dim'), (f'[ {hide} ]', 'dim')])
-    scene(f'settings{suffix}.svg', settings_lines(t, lang), 34)
-    scene(f'hidden{suffix}.svg', [[(f'[ {show} ]', 'dim')]], w(f'[ {show} ]'), framed=False)
+      'Directory · branch', 'Session cost', 'Progress rows', 'Bar width', '✓ Done']
+scene('card.svg', card_lines('novel'), 40, buttons_row0=[('[ ⚙ ]', 'dim'), ('[ ▾ hide ]', 'dim')])
+scene('settings.svg', settings_lines(EN), 34)
+scene('hidden.svg', [[('[ ◂ status ]', 'dim')]], w('[ ◂ status ]'), framed=False)

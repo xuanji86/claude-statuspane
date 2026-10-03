@@ -40,8 +40,6 @@ export type StatuspaneFigures = {
   progress: StatuspaneRow[]
 }
 
-export type StatuspaneLang = 'en' | 'zh'
-
 export type StatuspanePrefs = {
   model: boolean
   ctx: boolean
@@ -51,7 +49,6 @@ export type StatuspanePrefs = {
   cost: boolean
   progress: boolean
   barWidth: number
-  lang: StatuspaneLang
 }
 
 declare module 'claude-code' {

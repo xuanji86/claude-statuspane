@@ -32,7 +32,7 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 | **Session cost** | What this session has cost so far |
 | **Progress rows** | Bars any script or mod can feed, refreshed every second ([Progress API](#progress-api)) |
 | **Clickable** | Hide, show and settings are buttons; everything works with the mouse |
-| **Settings** | Pick the lines you want, the bar width and the language (English / 中文); saved across sessions |
+| **Settings** | Pick the lines you want and the bar width; saved across sessions |
 
 Colors follow the usual statusline thresholds: green under 60 %, yellow from 60 %, red from 85 %
 (context: 50 % / 80 %).
@@ -70,8 +70,7 @@ card alone.
 
 <img src="assets/settings.svg" alt="The settings page" width="100%">
 
-Click a line to switch it, `[ - ]` / `[ + ]` for the bar width (6–24), pick a language, then
-`✓ Done`.
+Click a line to switch it, `[ - ]` / `[ + ]` for the bar width (6–24), then `✓ Done`.
 
 </td>
 <td width="50%" valign="top">

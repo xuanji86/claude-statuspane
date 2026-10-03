@@ -47,8 +47,7 @@ describe('prefs', () => {
   })
   test('stored prefs are read over the defaults, bad values dropped', async () => {
     expect(loadPrefs(undefined)).toEqual(DEFAULT_PREFS)
-    expect(loadPrefs({ cost: false, barWidth: 99, ctx: 'no', lang: 'fr', bogus: true, ainiee: false })).toEqual({ ...DEFAULT_PREFS, cost: false, barWidth: 24 })
-    expect(loadPrefs({ lang: 'zh' }).lang).toBe('zh')
+    expect(loadPrefs({ cost: false, barWidth: 99, ctx: 'no', lang: 'zh', bogus: true, ainiee: false })).toEqual({ ...DEFAULT_PREFS, cost: false, barWidth: 24 })
   })
 })
 

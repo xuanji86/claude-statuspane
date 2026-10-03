@@ -4,7 +4,6 @@ import type { EngineInterface, Register, RenderChildren, SessionUsage } from 'cl
 import type {
   Statuspane,
   StatuspaneFigures as Figures,
-  StatuspaneLang as Lang,
   StatuspaneLimit as Limit,
   StatuspanePrefs as Prefs,
   StatuspaneRow as Row,
@@ -12,7 +11,7 @@ import type {
 
 const EMPTY: Figures = { dir: null, branch: null, model: null, effort: null, progress: [] }
 export const DEFAULT_PREFS: Prefs = {
-  model: true, ctx: true, limits: true, eta: true, location: true, cost: true, progress: true, barWidth: 12, lang: 'en',
+  model: true, ctx: true, limits: true, eta: true, location: true, cost: true, progress: true, barWidth: 12,
 }
 const figures = atom({ plugin: 'statuspane', key: 'figures' } as const, EMPTY)
 const isHidden = atom({ plugin: 'statuspane', key: 'isHidden' } as const, false)
@@ -35,21 +34,13 @@ const PROGRESS_POLL_MS = 1_000 // no file watcher in the mod API: poll, re-readi
 const PROGRESS_DIR_DEFAULT = '.claude/statuspane/progress' // under $HOME
 
 export const STRINGS = {
-  en: {
-    settings: 'Status settings', model: 'Model · effort', ctx: 'Context bar', limits: '5h / week limits',
-    eta: 'Reset countdowns', location: 'Directory · branch', cost: 'Session cost', progress: 'Progress rows',
-    bar: 'Bar width', lang: 'Language', done: '✓ Done', hide: '▾ hide', show: '◂ status',
-    hidden: 'Status card hidden.', shown: 'Status card shown.',
-  },
-  zh: {
-    settings: '状态卡设置', model: '模型 · effort', ctx: '上下文进度条', limits: '5h / week 额度',
-    eta: '重置倒计时', location: '目录 · 分支', cost: '会话花费', progress: '进度条接入',
-    bar: '进度条长度', lang: '语言', done: '✓ 完成', hide: '▾ 收起', show: '◂ 状态',
-    hidden: '状态卡已隐藏。', shown: '状态卡已显示。',
-  },
+  settings: 'Status settings', model: 'Model · effort', ctx: 'Context bar', limits: '5h / week limits',
+  eta: 'Reset countdowns', location: 'Directory · branch', cost: 'Session cost', progress: 'Progress rows',
+  bar: 'Bar width', done: '✓ Done', hide: '▾ hide', show: '◂ status',
+  hidden: 'Status card hidden.', shown: 'Status card shown.',
 } as const
 
-type Switch = Exclude<keyof Prefs, 'barWidth' | 'lang'>
+type Switch = Exclude<keyof Prefs, 'barWidth'>
 // The settings page's switches, in the card's order.
 export const SWITCHES: Switch[] = ['model', 'ctx', 'limits', 'eta', 'location', 'cost', 'progress']
 
@@ -124,7 +115,6 @@ export const loadPrefs = (stored: unknown): Prefs => {
   if (stored && typeof stored === 'object')
     for (const [k, v] of Object.entries(stored)) {
       if (k === 'barWidth' && typeof v === 'number') out.barWidth = Math.min(BAR_MAX, Math.max(BAR_MIN, Math.round(v)))
-      else if (k === 'lang' && (v === 'en' || v === 'zh')) out.lang = v
       else if ((SWITCHES as string[]).includes(k) && typeof v === 'boolean') out[k as Switch] = v
     }
   return out
@@ -293,8 +283,7 @@ export const register: Register = on => {
   on('command.run', { command: 'statuspane' }, async $ => {
     const hidden = !(await read($, isHidden))
     await update($, isHidden, () => hidden)
-    const t = STRINGS[(await read($, prefs)).lang]
-    return { text: hidden ? t.hidden : t.shown }
+    return { text: hidden ? STRINGS.hidden : STRINGS.shown }
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -321,7 +310,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || e.props.bodyColumns < MIN_COLUMNS) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const p = await read($, prefs)
-    const t = STRINGS[p.lang]
+    const t = STRINGS
     const setHidden = (hidden: boolean) => update($, isHidden, () => hidden)
     const setSettingsOpen = (open: boolean) => update($, isSettingsOpen, () => open)
     const change = async (fn: (q: Prefs) => Prefs) => {
@@ -355,12 +344,6 @@ export const register: Register = on => {
           <Button key="bar-minus" label="-" onPress={() => change(q => ({ ...q, barWidth: Math.max(BAR_MIN, q.barWidth - 2) }))} />
           <Text> {String(p.barWidth).padStart(2)} </Text>
           <Button key="bar-plus" label="+" onPress={() => change(q => ({ ...q, barWidth: Math.min(BAR_MAX, q.barWidth + 2) }))} />
-        </Box>,
-        <Box>
-          <Text>{t.lang} </Text>
-          {(['en', 'zh'] as Lang[]).map(l => (
-            <Button key={`lang-${l}`} label={l === 'en' ? 'English' : '中文'} variant={p.lang === l ? 'primary' : 'secondary'} dimColor={p.lang !== l} onPress={() => change(q => ({ ...q, lang: l }))} />
-          ))}
         </Box>,
         <Box justifyContent="flex-end">
           <Button key="settings-close" label={t.done} variant="primary" onPress={() => setSettingsOpen(false)} />
