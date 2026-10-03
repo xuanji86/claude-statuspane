@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，能看 GitHub CI 和部署状态，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.3.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.2-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
@@ -112,7 +112,7 @@ claude plugin install statuspane@claude-statuspane
 
 | | |
 | --- | --- |
-| `⟳ test · 1m20s` | 橙色：运行中，显示正在跑的 job 和已用时间 |
+| `⟳ test · 1m20s` | 橙色：运行中，显示正在跑的 job 和已用时间（两次查询之间也逐秒走） |
 | `⟳ deploying · 1m20s` | 名字里带 *deploy* 的 job 正在跑 |
 | `✓ deployed · 3m ago` | 绿色：跑完了，且 *deploy* job 成功（没有部署 job 时显示 `✓ passed`） |
 | `✗ test failed · 3m ago` | 红色：失败的 job（或 workflow） |

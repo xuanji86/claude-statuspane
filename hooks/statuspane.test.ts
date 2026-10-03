@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, cardLines, compactNow, lineWidth, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, cardLines, compactNow, lineWidth, cardWidth, ciLine, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
 import type { Job, Run } from './register'
 import { gauge } from './register'
 
@@ -194,17 +194,24 @@ describe('CI', () => {
   })
   test('runs under way show their jobs, a deploy as deploying', async () => {
     const busy = [run({ status: 'in_progress', conclusion: '' })]
-    expect(ciSummary(busy, [job('test', 'completed', 'success'), job('deploy', 'in_progress')], NOW)).toEqual({ text: '⟳ deploying · 1m20s', state: 'running', busy: true })
+    expect(ciSummary(busy, [job('test', 'completed', 'success'), job('deploy', 'in_progress')], NOW)).toMatchObject({ text: '⟳ deploying · 1m20s', state: 'running', busy: true })
     expect(ciSummary(busy, [job('lint', 'in_progress'), job('test', 'in_progress')], NOW).text).toBe('⟳ lint, test · 1m20s')
     expect(ciSummary(busy, [], NOW).text).toBe('⟳ queued · 1m20s')
   })
   test('finished runs say deployed, passed, failed or cancelled', async () => {
     const done = [run({})]
-    expect(ciSummary(done, [job('test', 'completed', 'success'), job('deploy', 'completed', 'success')], NOW)).toEqual({ text: '✓ deployed · 3m ago', state: 'ok', busy: false })
+    expect(ciSummary(done, [job('test', 'completed', 'success'), job('deploy', 'completed', 'success')], NOW)).toMatchObject({ text: '✓ deployed · 3m ago', state: 'ok', busy: false })
     expect(ciSummary(done, [job('test', 'completed', 'success'), job('deploy', 'completed', 'skipped')], NOW).text).toBe('✓ passed · 3m ago')
-    expect(ciSummary([run({ conclusion: 'failure' })], [job('test', 'completed', 'failure')], NOW)).toEqual({ text: '✗ test failed · 3m ago', state: 'error', busy: false })
+    expect(ciSummary([run({ conclusion: 'failure' })], [job('test', 'completed', 'failure')], NOW)).toMatchObject({ text: '✗ test failed · 3m ago', state: 'error', busy: false })
     expect(ciSummary([run({ conclusion: 'failure', workflowName: 'Release' })], [], NOW).text).toBe('✗ Release failed · 3m ago')
-    expect(ciSummary([run({ conclusion: 'cancelled' })], [], NOW)).toEqual({ text: '⊘ cancelled · 3m ago', busy: false })
+    expect(ciSummary([run({ conclusion: 'cancelled' })], [], NOW)).toMatchObject({ text: '⊘ cancelled · 3m ago', busy: false })
+    expect(ciSummary([run({ conclusion: 'cancelled' })], [], NOW).state).toBeUndefined()
+  })
+  test('a row re-made from its clock moves with time', async () => {
+    const busy = ciSummary([run({ status: 'in_progress', conclusion: '' })], [job('deploy', 'in_progress')], NOW)
+    expect(ciLine(busy.clock, NOW + 5_000)).toBe('⟳ deploying · 1m25s')
+    const done = ciSummary([run({})], [job('deploy', 'completed', 'success')], NOW)
+    expect(ciLine(done.clock, NOW + 60_000)).toBe('✓ deployed · 4m ago')
   })
   test('spans read short', async () => {
     expect([fmtSpan(5_000, true), fmtSpan(80_000, true), fmtSpan(3_725_000, true), fmtSpan(3_725_000, false), fmtSpan(3 * 86_400_000, false)]).toEqual(['5s', '1m20s', '1h02m', '1h', '3d'])

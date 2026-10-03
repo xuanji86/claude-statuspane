@@ -350,7 +350,12 @@ async function readProgress($: EngineInterface) {
       if (report.row && report.row.expiresAt > now) apiRows.push(report.row)
       else apiReports.delete(id)
     }
-    const progress = mergeRows(fileRows, [...apiRows, ...ciRows.values()], now)
+    // CI rows keep time between polls: their text is re-made from the clock each second.
+    const ci = [...ciRows].map(([k, r]) => {
+      const c = ciClocks.get(k)
+      return c ? { ...r, text: clean(ciLine(c, now), 60) } : r
+    })
+    const progress = mergeRows(fileRows, [...apiRows, ...ci], now)
     const before = (await read($, figures)).progress
     if (JSON.stringify(before) !== JSON.stringify(progress)) await update($, figures, f => ({ ...f, progress }))
   } catch {
@@ -449,20 +454,28 @@ export const latestGroup = (runs: readonly Run[]) => {
   return own.filter(r => r.headSha === sha)
 }
 
-// Pure: one commit's runs, and their jobs, as a row's text and state.
-export const ciSummary = (runs: readonly Run[], jobs: readonly Job[], now: number): { text: string; state?: State; busy: boolean } => {
+// A CI row's text from its clock: "⟳ deploying · 1m20s" (time under way) or "✓ deployed · 3m ago".
+// Re-made each second from the clock, so the time moves between polls of GitHub.
+export type CiClock = { head: string; at: number; running: boolean }
+export const ciLine = (c: CiClock, now: number) => `${c.head} · ${fmtSpan(now - c.at, c.running)}${c.running ? '' : ' ago'}`
+
+// Pure: one commit's runs, and their jobs, as a row's text, state and clock.
+export const ciSummary = (runs: readonly Run[], jobs: readonly Job[], now: number): { text: string; state?: State; busy: boolean; clock: CiClock } => {
   if (runs.some(r => r.status !== 'completed')) {
-    const started = Math.min(...runs.map(r => Date.parse(r.createdAt)))
     const active = jobs.filter(j => j.status === 'in_progress').map(j => j.name)
     const what = active.some(isDeploy) ? 'deploying' : active.join(', ') || 'queued'
-    return { text: `⟳ ${what} · ${fmtSpan(now - started, true)}`, state: 'running', busy: true }
+    const clock = { head: `⟳ ${what}`, at: Math.min(...runs.map(r => Date.parse(r.createdAt))), running: true }
+    return { text: ciLine(clock, now), state: 'running', busy: true, clock }
   }
-  const ago = `${fmtSpan(now - Math.max(...runs.map(r => Date.parse(r.updatedAt))), false)} ago`
+  const done = (head: string, state?: State) => {
+    const clock = { head, at: Math.max(...runs.map(r => Date.parse(r.updatedAt))), running: false }
+    return { text: ciLine(clock, now), ...(state && { state }), busy: false, clock }
+  }
   const failed = jobs.find(j => FAILED.has(j.conclusion))?.name ?? runs.find(r => FAILED.has(r.conclusion))?.workflowName
-  if (failed) return { text: `✗ ${failed} failed · ${ago}`, state: 'error', busy: false }
-  if (runs.every(r => r.conclusion === 'cancelled' || r.conclusion === 'skipped')) return { text: `⊘ cancelled · ${ago}`, busy: false }
+  if (failed) return done(`✗ ${failed} failed`, 'error')
+  if (runs.every(r => r.conclusion === 'cancelled' || r.conclusion === 'skipped')) return done('⊘ cancelled')
   const deployed = jobs.some(j => isDeploy(j.name) && j.conclusion === 'success')
-  return { text: `✓ ${deployed ? 'deployed' : 'passed'} · ${ago}`, state: 'ok', busy: false }
+  return done(`✓ ${deployed ? 'deployed' : 'passed'}`, 'ok')
 }
 
 const ciKey = (t: Target) => `ci.${t.repo}.${t.branch}`.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 64)
@@ -471,6 +484,7 @@ const ciKey = (t: Target) => `ci.${t.repo}.${t.branch}`.replace(/[^A-Za-z0-9._-]
 let ciHere: Target | null = null
 const ciWatches = new Map<string, Watch>()
 const ciRows = new Map<string, Row>()
+const ciClocks = new Map<string, CiClock>() // each row's clock, so its time moves every second
 const ciDue = new Map<string, number>()
 const jobsCache = new Map<string, Job[]>() // finished runs only, by id and update time
 let ciBusy = false
@@ -524,6 +538,7 @@ async function pollCi($: EngineInterface) {
     const targets = new Map<string, Target>(ciWatches)
     if (here && hereKey) targets.set(hereKey, here)
     for (const k of [...ciRows.keys()]) if (!targets.has(k)) ciRows.delete(k)
+    for (const k of [...ciClocks.keys()]) if (!ciRows.has(k)) ciClocks.delete(k)
     for (const [k, t] of targets) {
       if ((ciDue.get(k) ?? 0) > now) continue
       const w = ciWatches.get(k)
@@ -536,6 +551,7 @@ async function pollCi($: EngineInterface) {
       const fresh = !!w && runs.some(r => Date.parse(r.createdAt) >= w.since - CI_SKEW_MS)
       if (!runs.length || (k !== hereKey && !fresh)) {
         ciRows.delete(k) // a push whose runs have not shown yet: nothing until they do
+        ciClocks.delete(k)
         ciDue.set(k, now + (w ? CI_BUSY_MS : CI_IDLE_MS))
         continue
       }
@@ -544,7 +560,10 @@ async function pollCi($: EngineInterface) {
       ciDue.set(k, now + (s.busy || (w && !fresh) ? CI_BUSY_MS : CI_IDLE_MS))
       const label = fit(`${t.repo.split('/').pop()} ${t.branch}`, 24)
       const row = toRow({ label, text: s.text, state: s.state, ttl: CI_LINGER_MS / 1000 }, now, k)
-      if (row) ciRows.set(k, row)
+      if (row) {
+        ciRows.set(k, row)
+        ciClocks.set(k, s.clock)
+      }
     }
   } catch {
     // keep the last rows; they expire on their own if gh stays unreachable

@@ -111,6 +111,29 @@ test('a compaction clears the context fill until the next measurement', async ($
   await ui.unmount()
 })
 
+test('a running CI row counts every second without asking GitHub again', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
+  const created = new Date(clock.now()).toISOString()
+  const calls: string[] = []
+  await startSession($, on, { ciPush: true }, argv => {
+    calls.push(argv)
+    if (argv === 'git remote get-url origin') return 'git@github.com:o/r.git'
+    if (argv.startsWith('gh run list -R o/r --branch main'))
+      return JSON.stringify([{ databaseId: 7, status: 'in_progress', conclusion: '', workflowName: 'CI', headSha: 'b', event: 'push', createdAt: created, updatedAt: created }])
+    if (argv.startsWith('gh run view 7 -R o/r')) return JSON.stringify({ jobs: [{ name: 'deploy', status: 'in_progress', conclusion: '' }] })
+    return null
+  })
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call({ tool: 'Bash', command: 'git push' } as never)
+  await clock.advance(1_000)
+  expect(await ui.find({ type: 'Text', text: /deploying · 1s/ })).toBeDefined()
+  const asked = calls.filter(c => c.startsWith('gh ')).length
+  await clock.advance(3_000)
+  expect(await ui.find({ type: 'Text', text: /deploying · 4s/ })).toBeDefined()
+  expect(calls.filter(c => c.startsWith('gh ')).length).toBe(asked) // the next poll is 10 s after the last
+  await ui.unmount()
+})
+
 test('a push Claude runs shows its CI run until it finishes, then the result', async ($, on) => {
   const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
   let state = 'in_progress'
