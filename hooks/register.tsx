@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderChildren, SessionUsage } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, RenderElement, SessionUsage } from 'claude-code'
 
 import type {
   Statuspane,
@@ -27,17 +27,19 @@ const HIDDEN_RIGHT_PAD = 5 // clear of Claude Code's own [-] panel toggle, drawn
 const BAR_MIN = 6
 const BAR_MAX = 24
 const MAX_PROGRESS_ROWS = 5
-const MAX_PROGRESS_FILES = 20
-const MAX_PROGRESS_BYTES = 4096
+const MAX_PROGRESS_FILES = 20 // the newest by mtime; older, stale files fall out of the window
+const MAX_PROGRESS_BYTES = 65_536 // fields are cut to length after reading, so a long text only shortens
+const MAX_API_REPORTS = 20
 const DEFAULT_TTL = 300
 const PROGRESS_POLL_MS = 1_000 // no file watcher in the mod API: poll, re-reading only files whose mtime or size moved
-const PROGRESS_DIR_DEFAULT = '.claude/statuspane/progress' // under $HOME
+const PROGRESS_DIR_DEFAULT = '.claude/statuspane/progress' // under the home folder
 
 export const STRINGS = {
   settings: 'Status settings', model: 'Model · effort', ctx: 'Context bar', limits: '5h / week limits',
   eta: 'Reset countdowns', location: 'Directory · branch', cost: 'Session cost', progress: 'Progress rows',
   bar: 'Bar width', done: '✓ Done', hide: '▾ hide', show: '◂ status',
   hidden: 'Status card hidden.', shown: 'Status card shown.',
+  tooNarrow: 'Status card shown; it draws once the terminal is at least 70 columns wide.',
 } as const
 
 type Switch = Exclude<keyof Prefs, 'barWidth'>
@@ -90,8 +92,10 @@ export const shortDir = (dir: string, max = 20) => {
 }
 
 // Untrusted text from progress files and other mods: no control, escape or bidi characters, bounded length.
+// C0/C1 controls (escape included), bidi marks and isolates, zero-width and line/paragraph separators.
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g
 export const clean = (v: unknown, max: number) =>
-  typeof v === 'string' ? [...v.replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, '')].slice(0, max).join('').trim() : ''
+  typeof v === 'string' ? [...v.replace(UNSAFE, '')].slice(0, max).join('').trim() : ''
 
 const ID = /^[A-Za-z0-9._-]{1,64}$/
 
@@ -133,11 +137,11 @@ export const bar = (pct: number, width: number) => {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
-// "claude-opus-5-5[1m]" -> "Opus 5.5 (1M)"; anything else as given.
+// "claude-opus-5-5[1m]" -> "Opus 5.5 (1M)", "claude-opus-4-20250514" -> "Opus 4"; anything else as given.
 export const prettyModel = (id: string) => {
-  const m = /^claude-([a-z]+)-(\d+)-(\d+)(?:-\d{8})?(\[1m\])?$/.exec(id)
+  const m = /^claude-([a-z]+)-(\d{1,2})(?:-(\d{1,2}))?(?:-\d{8})?(\[1m\])?$/.exec(id)
   if (!m || !m[1]) return id
-  return `${m[1][0]?.toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}${m[4] ? ' (1M)' : ''}`
+  return `${m[1][0]?.toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}${m[4] ? ' (1M)' : ''}`
 }
 
 // The usage figures, from session.measure's input or $.session.usage() alike.
@@ -182,11 +186,12 @@ export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS): Pa
     } else lines.push([{ text: 'ctx ', dim: true }, { text: `${bar(0, p.barWidth)} ${PENDING}`, dim: true }])
   }
   if (p.limits) lines.push([...limit('5h', f.fiveHour, now, p.eta), sep, ...limit('wk', f.week, now, p.eta)])
-  const place: Part[] = [
-    ...(p.location ? [{ text: f.dir ? shortDir(f.dir) : PENDING, color: 'cyan' }, ...(f.branch ? [sep, { text: `⎇ ${fit(f.branch, 16)}`, color: 'magenta' }] : [])] : []),
-    ...(p.cost && f.costUsd !== undefined ? [{ text: `$${f.costUsd.toFixed(2)}`, color: 'green' }] : []),
+  const place: Part[][] = [
+    ...(p.location ? [[{ text: f.dir ? shortDir(f.dir) : PENDING, color: 'cyan' }]] : []),
+    ...(p.location && f.branch ? [[{ text: `⎇ ${fit(f.branch, 16)}`, color: 'magenta' }]] : []),
+    ...(p.cost && f.costUsd !== undefined ? [[{ text: `$${f.costUsd.toFixed(2)}`, color: 'green' }]] : []),
   ]
-  if (place.length) lines.push(place.flatMap((part, n) => (n > 0 && part.text.startsWith('$') ? [sep, part] : [part])))
+  if (place.length) lines.push(place.flatMap((parts, n) => (n > 0 ? [sep, ...parts] : parts)))
   if (p.progress)
     for (const r of f.progress.filter(r => r.expiresAt > now).slice(0, MAX_PROGRESS_ROWS)) lines.push(progressLine(r, p.barWidth))
   return lines
@@ -194,31 +199,62 @@ export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS): Pa
 
 export const lineWidth = (parts: Part[]) => parts.reduce((n, p) => n + cols(p.text), 0)
 
-// The card's inner width: room for every line and for the buttons beside the first, within bounds.
-export const cardWidth = (lines: Part[][]) =>
-  Math.min(MAX_CARD_WIDTH, Math.max(CARD_WIDTH, ...lines.map(lineWidth), lineWidth(lines[0] ?? []) + BUTTONS_WIDTH))
+// The card's inner width and where the buttons go: beside the first line, or on a row of their own
+// above it when that line and the buttons together would pass the widest card.
+export const layout = (lines: Part[][]) => {
+  const first = lineWidth(lines[0] ?? [])
+  const buttonsOwnRow = lines.length > 0 && first + BUTTONS_WIDTH > MAX_CARD_WIDTH
+  const width = Math.min(MAX_CARD_WIDTH, Math.max(CARD_WIDTH, ...lines.map(lineWidth), buttonsOwnRow ? BUTTONS_WIDTH : first + BUTTONS_WIDTH))
+  return { width, buttonsOwnRow }
+}
+export const cardWidth = (lines: Part[][]) => layout(lines).width
+
+type Entry = { name: string; kind: string; size: number; mtimeMs: number }
+
+// The progress files worth reading: *.json, not oversized, newest first, at most MAX_PROGRESS_FILES.
+export const pickFiles = <E extends Entry>(entries: readonly E[]): E[] =>
+  entries
+    .filter(f => f.kind === 'file' && f.name.endsWith('.json') && f.size <= MAX_PROGRESS_BYTES)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || a.name.localeCompare(b.name))
+    .slice(0, MAX_PROGRESS_FILES)
+
+// Live rows from both sources (a mod's report wins over a file of the same id), by id, at most MAX_PROGRESS_ROWS.
+export const mergeRows = (fileRows: readonly Row[], apiRows: readonly Row[], now: number): Row[] => {
+  const rows = new Map<string, Row>()
+  for (const r of [...fileRows, ...apiRows]) if (r.expiresAt > now) rows.set(r.id, r)
+  return [...rows.values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, MAX_PROGRESS_ROWS)
+}
+
+// The progress folder: STATUSPANE_PROGRESS_DIR (absolute, or starting with ~), else ~/.claude/statuspane/progress.
+export const resolveDir = (custom: string | undefined, home: string | undefined) => {
+  const expand = (p: string) => (p === '~' || p.startsWith('~/') ? (home ? `${home}${p.slice(1)}` : null) : p)
+  const isAbsolute = (p: string) => p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) || p.startsWith('\\\\')
+  const dir = custom ? expand(custom) : null
+  if (dir && isAbsolute(dir)) return dir
+  return home ? `${home}/${PROGRESS_DIR_DEFAULT}` : null
+}
 
 // Rows other mods reported through $.statuspane, stamped with an expiry on the next poll.
 // lazy: module state, so a reload of this mod forgets them until their sources report again.
 const apiReports = new Map<string, { raw: unknown; row: Row | null }>()
 const fileCache = new Map<string, { mtimeMs: number; size: number; row: Row | null }>()
+// What the band last drew at, so /statuspane can say when the card cannot show.
+let lastBand = { columns: Infinity, hasSurvey: false }
 
 async function progressDir($: EngineInterface) {
-  const custom = await $.env.get('STATUSPANE_PROGRESS_DIR')
-  if (custom) return custom
-  const home = await $.env.get('HOME')
-  return home ? `${home}/${PROGRESS_DIR_DEFAULT}` : null
+  const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+  return resolveDir(await $.env.get('STATUSPANE_PROGRESS_DIR'), home)
 }
 
+// Never rejects: a missing, unreadable or vanishing folder just means no file rows this poll.
 async function readProgress($: EngineInterface) {
-  const now = await $.clock.now()
-  const rows = new Map<string, Row>()
-  const dir = await progressDir($)
-  if (dir && (await $.fs.exists(dir))) {
-    const files = (await $.fs.list(dir))
-      .filter(f => f.kind === 'file' && f.name.endsWith('.json') && f.size <= MAX_PROGRESS_BYTES)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .slice(0, MAX_PROGRESS_FILES)
+  try {
+    const now = await $.clock.now()
+    const fileRows: Row[] = []
+    const dir = await progressDir($)
+    const exists = dir ? await $.fs.exists(dir).catch(() => false) : false // a missing folder is the usual case: no log line each second
+    const entries = dir && exists ? await $.fs.list(dir).catch(() => []) : []
+    const files = pickFiles(entries)
     for (const f of files) {
       let hit = fileCache.get(f.name)
       if (!hit || hit.mtimeMs !== f.mtimeMs || hit.size !== f.size) {
@@ -226,28 +262,36 @@ async function readProgress($: EngineInterface) {
         hit = { mtimeMs: f.mtimeMs, size: f.size, row: toRow(raw, f.mtimeMs, f.name.slice(0, -'.json'.length)) }
         fileCache.set(f.name, hit)
       }
-      if (hit.row && hit.row.expiresAt > now) rows.set(hit.row.id, hit.row)
+      if (hit.row) fileRows.push(hit.row)
     }
     for (const name of fileCache.keys()) if (!files.some(f => f.name === name)) fileCache.delete(name)
+    const apiRows: Row[] = []
+    for (const [id, report] of apiReports) {
+      report.row ??= toRow(report.raw, now, id)
+      if (report.row && report.row.expiresAt > now) apiRows.push(report.row)
+      else apiReports.delete(id)
+    }
+    const progress = mergeRows(fileRows, apiRows, now)
+    const before = (await read($, figures)).progress
+    if (JSON.stringify(before) !== JSON.stringify(progress)) await update($, figures, f => ({ ...f, progress }))
+  } catch {
+    // lazy: swallowed silently; a debug line would help a user whose rows never show.
   }
-  for (const [id, report] of apiReports) {
-    report.row ??= toRow(report.raw, now, id)
-    if (report.row && report.row.expiresAt > now) rows.set(id, report.row)
-    else apiReports.delete(id)
-  }
-  const progress = [...rows.values()].sort((a, b) => a.id.localeCompare(b.id))
-  const before = (await read($, figures)).progress
-  if (JSON.stringify(before) !== JSON.stringify(progress)) await update($, figures, f => ({ ...f, progress }))
 }
 
+// Never rejects; runs off the turn's path (callers do not await it).
 async function refresh($: EngineInterface) {
-  const home = await $.env.get('HOME')
-  const cwd = await $.session.cwd()
-  const dir = home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd
-  const repo = await $.session.repo()
-  const b = repo ? await $.process.run(['git', 'branch', '--show-current'], { cwd, timeoutMs: 3000 }).catch(() => null) : null
-  const branch = (b && b.exitCode === 0 && b.stdout.trim()) || null
-  await update($, figures, f => ({ ...f, dir, branch }))
+  try {
+    const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+    const cwd = await $.session.cwd()
+    const dir = home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd
+    const repo = await $.session.repo()
+    const b = repo ? await $.process.run(['git', 'branch', '--show-current'], { cwd, timeoutMs: 3000 }).catch(() => null) : null
+    const branch = (b && b.exitCode === 0 && b.stdout.trim()) || null
+    await update($, figures, f => ({ ...f, dir, branch }))
+  } catch {
+    // keep the last directory and branch
+  }
 }
 
 export const register: Register = on => {
@@ -257,7 +301,10 @@ export const register: Register = on => {
     const statuspane: Statuspane = {
       progress: async item => {
         const id = typeof item?.id === 'string' ? item.id : ''
-        if (ID.test(id)) apiReports.set(id, { raw: item, row: null })
+        if (!ID.test(id)) return
+        apiReports.delete(id) // re-insert last, so the oldest report is the one that goes at the cap
+        if (apiReports.size >= MAX_API_REPORTS) apiReports.delete(apiReports.keys().next().value as string)
+        apiReports.set(id, { raw: item, row: null })
       },
       clear: async id => {
         apiReports.delete(String(id))
@@ -273,22 +320,23 @@ export const register: Register = on => {
     const model = await $.session.model()
     const usage = fromUsage(await $.session.usage())
     await update($, figures, f => ({ ...f, ...usage, model: model || null }))
-    await refresh($)
-    await readProgress($)
     $.clock.every(30_000, () => void refresh($))
     $.clock.every(PROGRESS_POLL_MS, () => void readProgress($))
+    void refresh($)
+    void readProgress($)
     return next(e)
   })
 
   on('command.run', { command: 'statuspane' }, async $ => {
-    const hidden = !(await read($, isHidden))
-    await update($, isHidden, () => hidden)
-    return { text: hidden ? STRINGS.hidden : STRINGS.shown }
+    const hidden = await update($, isHidden, h => !h)
+    if (hidden) return { text: STRINGS.hidden }
+    return { text: lastBand.columns < MIN_COLUMNS ? STRINGS.tooNarrow : STRINGS.shown }
   })
 
   on('turn.complete', async ($, e, next) => {
-    await refresh($)
-    return next(e)
+    const result = await next(e)
+    if (!e.agentId) void refresh($) // the branch may have moved; subagents' turns leave it be
+    return result
   })
 
   on('turn.step', async function* ($, e, next) {
@@ -307,70 +355,76 @@ export const register: Register = on => {
 
   // The band's rows hold the card at the right edge, just above the prompt.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    lastBand = { columns: e.props.bodyColumns, hasSurvey: e.props.hasSurvey }
     if (e.props.hasSurvey || e.props.bodyColumns < MIN_COLUMNS) return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
+    // What the plugins beneath drew here stays, above the card. Never pass the band itself: a band handed
+    // back is not drawn again when the card's state changes.
+    const below = await next(e).catch(() => null)
+    const withBelow = (ours: RenderElement): RenderElement => (below ? <Box flexDirection="column">{below}{ours}</Box> : ours)
     const p = await read($, prefs)
-    const t = STRINGS
     const setHidden = (hidden: boolean) => update($, isHidden, () => hidden)
     const setSettingsOpen = (open: boolean) => update($, isSettingsOpen, () => open)
-    const change = async (fn: (q: Prefs) => Prefs) => {
-      const changed = fn(await read($, prefs))
-      await update($, prefs, () => changed)
-      await $.store.set('prefs', changed)
-    }
-    // Hidden: a one-row button stays at the right edge. Never pass here: a band handed back is not drawn again.
+    // update() applies `fn` to the latest value and retries on a race, so two quick presses both land.
+    const change = async (fn: (q: Prefs) => Prefs) => $.store.set('prefs', await update($, prefs, fn))
+    // Hidden: a one-row button stays at the right edge.
     if (await read($, isHidden))
-      return (
+      return withBelow(
         <Box justifyContent="flex-end" paddingRight={HIDDEN_RIGHT_PAD}>
-          <Button key="show" label={t.show} dimColor onPress={() => setHidden(false)} />
-        </Box>
+          <Button key="show" label={STRINGS.show} dimColor onPress={() => setHidden(false)} />
+        </Box>,
       )
-    const frame = (width: number, children: RenderChildren[]) => (
-      <Box justifyContent="flex-end" paddingRight={1}>
-        <Box width={width + 4} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-          {children}
-        </Box>
-      </Box>
-    )
+    const frame = (width: number, children: RenderChildren[]) =>
+      withBelow(
+        <Box justifyContent="flex-end" paddingRight={1}>
+          <Box width={width + 4} flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+            {children}
+          </Box>
+        </Box>,
+      )
 
     if (await read($, isSettingsOpen))
       return frame(CARD_WIDTH, [
-        <Text bold>{t.settings}</Text>,
+        <Text bold>{STRINGS.settings}</Text>,
         SWITCHES.map(k => (
-          <Button key={`pref-${k}`} label={`${p[k] ? '☑' : '☐'} ${t[k]}`} plain onPress={() => change(q => ({ ...q, [k]: !q[k] }))} />
+          <Button key={`pref-${k}`} label={`${p[k] ? '☑' : '☐'} ${STRINGS[k]}`} plain onPress={() => change(q => ({ ...q, [k]: !q[k] }))} />
         )),
         <Box>
-          <Text>{t.bar} </Text>
+          <Text>{STRINGS.bar} </Text>
           <Button key="bar-minus" label="-" onPress={() => change(q => ({ ...q, barWidth: Math.max(BAR_MIN, q.barWidth - 2) }))} />
           <Text> {String(p.barWidth).padStart(2)} </Text>
           <Button key="bar-plus" label="+" onPress={() => change(q => ({ ...q, barWidth: Math.min(BAR_MAX, q.barWidth + 2) }))} />
         </Box>,
         <Box justifyContent="flex-end">
-          <Button key="settings-close" label={t.done} variant="primary" onPress={() => setSettingsOpen(false)} />
+          <Button key="settings-close" label={STRINGS.done} variant="primary" onPress={() => setSettingsOpen(false)} />
         </Box>,
       ])
 
     const lines = cardLines(await read($, figures), await $.clock.now(), p)
-    const width = cardWidth(lines)
+    const { width, buttonsOwnRow } = layout(lines)
     const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim}>{q.text}</Text>)
+    const row = (parts: Part[], room: number) => (
+      <Text wrap="truncate-end">
+        {runs(parts)}
+        {' '.repeat(Math.max(0, room - lineWidth(parts)))}
+      </Text>
+    )
+    const buttons = [
+      <Button key="settings" label="⚙" dimColor onPress={() => setSettingsOpen(true)} />,
+      <Button key="hide" label={STRINGS.hide} dimColor onPress={() => setHidden(true)} />,
+    ]
     const first = lines[0] ?? []
-
-    return frame(width, [
+    const top = buttonsOwnRow ? (
+      <Box justifyContent="flex-end">{buttons}</Box>
+    ) : (
       <Box>
-        <Text wrap="truncate-end">
-          {runs(first)}
-          {' '.repeat(Math.max(0, width - BUTTONS_WIDTH - lineWidth(first)))}
-        </Text>
+        {row(first, width - BUTTONS_WIDTH)}
         <Text> </Text>
-        <Button key="settings" label="⚙" dimColor onPress={() => setSettingsOpen(true)} />
-        <Button key="hide" label={t.hide} dimColor onPress={() => setHidden(true)} />
-      </Box>,
-      lines.slice(1).map(parts => (
-        <Text wrap="truncate-end">
-          {runs(parts)}
-          {' '.repeat(Math.max(0, width - lineWidth(parts)))}
-        </Text>
-      )),
-    ])
+        {buttons}
+      </Box>
+    )
+    const rest = buttonsOwnRow ? lines : lines.slice(1)
+
+    return frame(width, [top, rest.map(parts => row(parts, width))])
   })
 }

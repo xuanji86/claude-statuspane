@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, bar, cardLines, cardWidth, clean, cols, fit, loadPrefs, prettyModel, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, bar, cardLines, cardWidth, clean, cols, fit, layout, loadPrefs, mergeRows, pickFiles, prettyModel, resolveDir, shortDir, toRow } from './register'
 
 const NOW = Date.parse('2026-10-02T00:00:00Z')
 const text = (lines: { text: string }[][]) => lines.map(l => l.map(p => p.text).join(''))
@@ -28,6 +28,9 @@ describe('card', () => {
   })
   test('model ids read as their display names', async () => {
     expect(prettyModel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
+    expect(prettyModel('claude-opus-4-20250514')).toBe('Opus 4')
+    expect(prettyModel('claude-sonnet-4-20250514[1m]')).toBe('Sonnet 4 (1M)')
+    expect(prettyModel('claude-opus-4-1-20250805')).toBe('Opus 4.1')
     expect(prettyModel('sonnet')).toBe('sonnet')
   })
 })
@@ -89,5 +92,42 @@ describe('long names', () => {
     expect(fit('feature/very-long-branch-name-for-testing', 16)).toBe('feature/very-lo…')
     const lines = cardLines({ ...FULL, dir: '/Users/someone/Desktop/a/b/c/d/e/f/g/h/i/j/project', branch: 'x'.repeat(80) }, NOW)
     expect(cardWidth(lines)).toBeLessThanOrEqual(50)
+  })
+})
+
+describe('progress files', () => {
+  const file = (name: string, mtimeMs: number, size = 100, kind = 'file') => ({ name, kind, size, mtimeMs, isLink: false })
+  test('the newest files are read, so old stale ones never crowd out a new source', async () => {
+    const old = Array.from({ length: 25 }, (_, i) => file(`a-job${String(i).padStart(2, '0')}.json`, 1_000 + i))
+    const picked = pickFiles([...old, file('z-build.json', 9_999), file('notes.txt', 10_000), file('dir.json', 10_000, 100, 'dir'), file('big.json', 10_000, 70_000)])
+    expect(picked.length).toBe(20)
+    expect(picked[0]?.name).toBe('z-build.json')
+    expect(picked.map(f => f.name)).not.toContain('notes.txt')
+    expect(picked.map(f => f.name)).not.toContain('big.json')
+  })
+  test('rows merge by id, live only, a report from a mod over a file, at most five', async () => {
+    const row = (id: string, expiresAt: number, label = id) => ({ id, label, percent: 1, expiresAt })
+    const rows = mergeRows([row('a', 5), row('b', 0), row('c', 5, 'file')], [row('c', 5, 'mod'), row('d', 5), row('e', 5), row('f', 5), row('g', 5)], 1)
+    expect(rows.map(r => r.id)).toEqual(['a', 'c', 'd', 'e', 'f'])
+    expect(rows.find(r => r.id === 'c')?.label).toBe('mod')
+  })
+  test('the folder setting expands ~ and ignores relative paths', async () => {
+    expect(resolveDir(undefined, '/home/u')).toBe('/home/u/.claude/statuspane/progress')
+    expect(resolveDir('~/p', '/home/u')).toBe('/home/u/p')
+    expect(resolveDir('/srv/p', '/home/u')).toBe('/srv/p')
+    expect(resolveDir('C:\\p', undefined)).toBe('C:\\p')
+    expect(resolveDir('rel/p', '/home/u')).toBe('/home/u/.claude/statuspane/progress')
+    expect(resolveDir(undefined, undefined)).toBeNull()
+  })
+})
+
+describe('layout', () => {
+  test('buttons move to their own row when the first line is too wide to share it', async () => {
+    const narrow = cardLines({ ...FULL }, NOW)
+    expect(layout(narrow).buttonsOwnRow).toBe(false)
+    const wide = cardLines(FULL, NOW, { ...DEFAULT_PREFS, model: false, barWidth: 24 })
+    const { width, buttonsOwnRow } = layout(wide)
+    expect(buttonsOwnRow).toBe(true)
+    expect(width).toBeGreaterThanOrEqual(text(wide)[0]?.length ?? 0)
   })
 })

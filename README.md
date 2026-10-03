@@ -5,7 +5,7 @@
 **A floating status card for Claude Code.**<br>
 Model, context, rate limits, cost and branch at a glance, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -108,12 +108,13 @@ pass `ctrl+x` chords through, bind it to one key in `~/.claude/keybindings.json`
 ## Progress API
 
 Show your own progress on the card, from any language or from another mod. Rows are sorted by id,
-at most five show, and each one goes away by itself once its source stops reporting.
+at most five show, and each one goes away by itself once its source stops reporting. The card reads
+the 20 most recently written files, so old files left behind never crowd out a new one.
 
 ### From any script: a JSON file
 
 Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
-`STATUSPANE_PROGRESS_DIR`):
+`STATUSPANE_PROGRESS_DIR`, an absolute path or one starting with `~/`):
 
 ```json
 { "label": "build", "percent": 42.5, "text": "3/7 · 1.2/min", "ttl": 300 }
@@ -129,7 +130,8 @@ Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
 `<id>` uses letters, digits, `.`, `_` and `-`. Write to a temporary file and rename it over the
 target so the card never reads half a file; delete the file to remove the row at once.
 
-Ready-made helpers in [`examples/`](examples):
+Ready-made helpers in [`examples/`](examples) (they check the id, cut fields to length and
+write atomically; the shell one needs `python3`):
 
 ```sh
 examples/report-progress.sh build "build" 42.5 "3/7"
@@ -161,8 +163,8 @@ Same fields as the file. Rows from a mod live in memory, so report again after s
 
 Everything stays on your machine. statuspane reads Claude Code's own session figures, runs
 `git branch --show-current` in the session's directory, and lists the progress folder. From that
-folder it reads only `*.json` files of at most 4 KB, strips control and bidi characters from their
-text, bounds every field, and never runs anything they contain.
+folder it reads only `*.json` files of at most 64 KB, strips control, bidi and zero-width characters
+from their text, cuts every field to length, and never runs anything they contain.
 
 ## Develop
 

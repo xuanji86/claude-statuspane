@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.0.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -99,11 +99,11 @@ claude plugin install statuspane@claude-statuspane
 
 ## 进度接口
 
-任何语言写的脚本、或者别的 mod，都能把自己的进度显示在卡片上。进度行按 id 排序，最多显示 5 行；来源停止上报后会自动消失。
+任何语言写的脚本、或者别的 mod，都能把自己的进度显示在卡片上。进度行按 id 排序，最多显示 5 行；来源停止上报后会自动消失。卡片只读最近写入的 20 个文件，留在目录里的旧文件不会挤掉新的。
 
 ### 任何脚本：写一个 JSON 文件
 
-写入 `~/.claude/statuspane/progress/<id>.json`（目录可以用 `STATUSPANE_PROGRESS_DIR` 改）：
+写入 `~/.claude/statuspane/progress/<id>.json`（目录可以用 `STATUSPANE_PROGRESS_DIR` 改，须是绝对路径或以 `~/` 开头）：
 
 ```json
 { "label": "build", "percent": 42.5, "text": "3/7 · 1.2/min", "ttl": 300 }
@@ -118,7 +118,7 @@ claude plugin install statuspane@claude-statuspane
 
 `<id>` 只能用字母、数字、`.`、`_`、`-`。请先写临时文件再改名覆盖，避免卡片读到写了一半的文件；删掉文件，这一行会立刻消失。
 
-[`examples/`](examples) 里有现成的工具：
+[`examples/`](examples) 里有现成的工具（会校验 id、截断超长字段并原子写入；shell 版需要 `python3`）：
 
 ```sh
 examples/report-progress.sh build "build" 42.5 "3/7"
@@ -147,7 +147,7 @@ await $.statuspane.clear('my-job')
 
 ## 隐私与安全
 
-所有数据都留在本机。statuspane 只读取 Claude Code 自己的会话数据，在会话目录里运行 `git branch --show-current`，并读取进度目录。它只读该目录里不超过 4 KB 的 `*.json` 文件，会去掉文字里的控制字符和双向控制符，限制每个字段的长度，不会执行文件里的任何内容。
+所有数据都留在本机。statuspane 只读取 Claude Code 自己的会话数据，在会话目录里运行 `git branch --show-current`，并读取进度目录。它只读该目录里不超过 64 KB 的 `*.json` 文件，会去掉文字里的控制字符、双向控制符和零宽字符，截断每个字段的长度，不会执行文件里的任何内容。
 
 ## 开发
 
