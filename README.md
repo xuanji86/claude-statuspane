@@ -3,9 +3,9 @@
 # statuspane
 
 **A floating status card for Claude Code.**<br>
-Model, context, rate limits, cost and branch at a glance, plus progress bars any script can feed.
+Model, context, rate limits, cost and branch at a glance, your GitHub CI and deploys, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.0.1-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 
@@ -30,6 +30,7 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 | **Rate limits** | 5-hour and weekly use with reset countdowns (`↻2h41m`) |
 | **Where you are** | Directory and git branch, shortened so the card stays narrow |
 | **Session cost** | What this session has cost so far |
+| **GitHub CI** | The branch's latest Actions run and the runs a push sets off, deploys included ([GitHub CI](#github-ci)) |
 | **Progress rows** | Bars any script or mod can feed, refreshed every second ([Progress API](#progress-api)) |
 | **Clickable** | Hide, show and settings are buttons; everything works with the mouse |
 | **Settings** | Pick the lines you want and the bar width; saved across sessions |
@@ -105,6 +106,28 @@ pass `ctrl+x` chords through, bind it to one key in `~/.claude/keybindings.json`
 
 </details>
 
+## GitHub CI
+
+Two switches on the settings page, both off until you turn them on. They need the
+[GitHub CLI](https://cli.github.com) signed in (`gh auth login`).
+
+| Switch | Shows |
+| --- | --- |
+| **CI · this branch** | The latest Actions run of the branch the session is on: checked every minute, every 10 seconds while it runs |
+| **CI · after a push** | When Claude runs `git push` or `gh pr merge`, the runs that set off (for a merge, on the base branch) until they finish; the result stays for 10 minutes |
+
+Each row reads `<repo> <branch>` and then:
+
+| | |
+| --- | --- |
+| `⟳ test · 1m20s` | yellow: under way, with the jobs running now and the time so far |
+| `⟳ deploying · 1m20s` | a job whose name has *deploy* in it is running |
+| `✓ deployed · 3m ago` | green: done, and a *deploy* job succeeded (`✓ passed` when none ran) |
+| `✗ test failed · 3m ago` | red: the job (or workflow) that failed |
+| `⊘ cancelled · 3m ago` | every run was cancelled or skipped |
+
+All of one commit's workflows make one row; scheduled runs are left out.
+
 ## Progress API
 
 Show your own progress on the card, from any language or from another mod. Rows are sorted by id,
@@ -117,7 +140,7 @@ Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
 `STATUSPANE_PROGRESS_DIR`, an absolute path or one starting with `~/`):
 
 ```json
-{ "label": "build", "percent": 42.5, "text": "3/7 · 1.2/min", "ttl": 300 }
+{ "label": "build", "percent": 42.5, "text": "3/7 · 1.2/min", "ttl": 300, "state": "running" }
 ```
 
 | Field | Type | |
@@ -126,6 +149,7 @@ Write `~/.claude/statuspane/progress/<id>.json` (the folder can be moved with
 | `percent` | number, optional | 0–100. Leave it out for a text-only row |
 | `text` | string, optional | Shown after the bar, up to 60 characters |
 | `ttl` | seconds, optional | How long the row stays after the file was last written (default 300) |
+| `state` | string, optional | `running` (yellow), `ok` (green) or `error` (red): colors the bar and the text |
 
 `<id>` uses letters, digits, `.`, `_` and `-`. Write to a temporary file and rename it over the
 target so the card never reads half a file; delete the file to remove the row at once.
@@ -134,12 +158,12 @@ Ready-made helpers in [`examples/`](examples) (they check the id, cut fields to 
 write atomically; the shell one needs `python3`):
 
 ```sh
-examples/report-progress.sh build "build" 42.5 "3/7"
+examples/report-progress.sh build "build" 42.5 "3/7"            # id label [percent] [text] [ttl] [state]
 ```
 
 ```python
 from report_progress import report, clear
-report("my-job", "my job", 40, "4/10")
+report("my-job", "my job", 40, "4/10", state="running")
 clear("my-job")
 ```
 
@@ -149,7 +173,7 @@ List `statuspane` under `dependencies` in your mod's `plugin.json` (its types ar
 your `.claude-plugin/types/statuspane/`), and call:
 
 ```ts
-await $.statuspane.progress({ id: 'my-job', label: 'my job', percent: 40, text: '4/10', ttl: 120 })
+await $.statuspane.progress({ id: 'my-job', label: 'my job', percent: 40, text: '4/10', ttl: 120, state: 'running' })
 await $.statuspane.clear('my-job')
 ```
 
@@ -162,7 +186,9 @@ Same fields as the file. Rows from a mod live in memory, so report again after s
 ## Privacy and safety
 
 Everything stays on your machine. statuspane reads Claude Code's own session figures, runs
-`git branch --show-current` in the session's directory, and lists the progress folder. From that
+`git branch --show-current` in the session's directory, and lists the progress folder. Only with a
+CI switch on does it reach out: it reads the `origin` remote and runs `gh run list` / `gh run view`
+(and `gh pr view` after a merge) for that repository, through `gh` and your own sign-in. From that
 folder it reads only `*.json` files of at most 64 KB, strips control, bidi and zero-width characters
 from their text, cuts every field to length, and never runs anything they contain.
 

@@ -81,21 +81,22 @@ def card_lines(novel):
         [('ctx ', 'dim'), *bar(15), (' 15%', 'grn'), (' 148k/1M', 'dim')],
         [('5h ', 'dim'), ('9%', 'grn'), (' ↻0h45m', 'dim'), sep, ('wk ', 'dim'), ('67%', 'yel'), (' ↻19h25m', 'dim')],
         [('~/proj', 'cyan'), sep, ('⎇ main', 'mag'), sep, ('$0.87', 'grn')],
-        [('build ', 'dim'), *bar(50), (' 50%', 'grn'), (' 3/6', 'fg')],
         [(f'📖 {novel} ', 'dim'), *bar(64), (' 64%', 'grn'), (' 768/1200', 'fg')],
+        [('osa-api main ', 'dim'), ('⟳ deploying · 1m20s', 'yel')],
+        [('proj main ', 'dim'), ('✓ passed · 3m ago', 'grn')],
     ]
 
 
 def settings_lines(t):
-    rows = [[(t[0], 'fg', 1)]] + [[(('☐ ' if i == 5 else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:8])]
-    rows.append([(t[8] + ' ', 'fg'), ('[ - ]', 'fg'), (' 12 ', 'fg'), ('[ + ]', 'fg')])
-    done = f'[ {t[9]} ]'
+    rows = [[(t[0], 'fg', 1)]] + [[(('☐ ' if i in (5, 7) else '☑ ') + label, 'fg')] for i, label in enumerate(t[1:10])]
+    rows.append([(t[10] + ' ', 'fg'), ('[ - ]', 'fg'), (' 12 ', 'fg'), ('[ + ]', 'fg')])
+    done = f'[ {t[11]} ]'
     rows.append([(' ' * (34 - w(done)), 'fg'), (done, 'accent', 1)])
     return rows
 
 
 EN = ['Status settings', 'Model · effort', 'Context bar', '5h / week limits', 'Reset countdowns',
-      'Directory · branch', 'Session cost', 'Progress rows', 'Bar width', '✓ Done']
+      'Directory · branch', 'Session cost', 'Progress rows', 'CI · this branch', 'CI · after a push', 'Bar width', '✓ Done']
 scene('card.svg', card_lines('novel'), 40, buttons_row0=[('[ ⚙ ]', 'dim'), ('[ ▾ hide ]', 'dim')])
 scene('settings.svg', settings_lines(EN), 34)
 scene('hidden.svg', [[('[ ◂ status ]', 'dim')]], w('[ ◂ status ]'), framed=False)

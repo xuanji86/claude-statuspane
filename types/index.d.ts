@@ -1,3 +1,6 @@
+/** How a row is going, which colors it: running yellow, ok green, error red. */
+export type StatuspaneState = 'running' | 'ok' | 'error'
+
 /**
  * One progress row on the card, from a progress file or from another mod's
  * `$.statuspane.progress(...)` call.
@@ -13,6 +16,8 @@ export type StatuspaneProgress = {
   text?: string
   /** Seconds the row stays without a fresh report (default 300). */
   ttl?: number
+  /** Colors the bar and the text; leave it out for a green bar and plain text. */
+  state?: StatuspaneState
 }
 
 /** What other mods call: `$.statuspane.progress({...})`, `$.statuspane.clear(id)`. */
@@ -24,7 +29,7 @@ export type Statuspane = {
 export type StatuspaneLimit = { pct: number; resetsAt?: string }
 
 /** A progress row as the card draws it: sanitized, with its expiry. */
-export type StatuspaneRow = { id: string; label: string; percent?: number; text?: string; expiresAt: number }
+export type StatuspaneRow = { id: string; label: string; percent?: number; text?: string; state?: StatuspaneState; expiresAt: number }
 
 export type StatuspaneFigures = {
   dir: string | null
@@ -48,6 +53,10 @@ export type StatuspanePrefs = {
   location: boolean
   cost: boolean
   progress: boolean
+  /** The current branch's latest CI runs on GitHub, through `gh`. */
+  ciBranch: boolean
+  /** The runs a `git push` or `gh pr merge` in the session set off, until they finish. */
+  ciPush: boolean
   barWidth: number
 }
 

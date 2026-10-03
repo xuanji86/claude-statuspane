@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, bar, cardLines, cardWidth, clean, cols, fit, layout, loadPrefs, mergeRows, pickFiles, prettyModel, resolveDir, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, bar, cardLines, cardWidth, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
+import type { Job, Run } from './register'
 
 const NOW = Date.parse('2026-10-02T00:00:00Z')
 const text = (lines: { text: string }[][]) => lines.map(l => l.map(p => p.text).join(''))
@@ -75,6 +76,16 @@ describe('progress rows', () => {
     expect(lines).toEqual([`build ${bar(50, 12)} 50% 3/6`, 'sync waiting'])
     expect(text(cardLines({ ...BASE, progress }, NOW, { ...DEFAULT_PREFS, progress: false }))).not.toContain('sync waiting')
   })
+  test('a state colors the bar and the text; an unknown state is dropped', async () => {
+    expect(toRow({ label: 'ci', text: 'x', state: 'error' }, NOW, 'a')?.state).toBe('error')
+    expect(toRow({ label: 'ci', text: 'x', state: 'purple' }, NOW, 'a')).not.toHaveProperty('state')
+    const only = { ...DEFAULT_PREFS, model: false, ctx: false, limits: false, location: false }
+    const draw = (state?: 'running' | 'ok' | 'error') =>
+      cardLines({ ...BASE, progress: [{ id: 'a', label: 'ci', percent: 50, text: 'x', state, expiresAt: NOW + 1 }] }, NOW, only)[0]
+    expect(draw('error')?.map(p => p.color)).toEqual([undefined, 'red', 'red'])
+    expect(draw('running')?.map(p => p.color)).toEqual([undefined, 'yellow', 'yellow'])
+    expect(draw()?.map(p => p.color)).toEqual([undefined, 'green', undefined])
+  })
   test('wide characters count two columns and control characters are stripped', async () => {
     expect(cols('ab中文')).toBe(6)
     expect(clean('a‮b\nc', 10)).toBe('abc')
@@ -129,5 +140,54 @@ describe('layout', () => {
     const { width, buttonsOwnRow } = layout(wide)
     expect(buttonsOwnRow).toBe(true)
     expect(width).toBeGreaterThanOrEqual(text(wide)[0]?.length ?? 0)
+  })
+})
+
+describe('CI', () => {
+  const run = (o: Partial<Run>): Run => ({
+    databaseId: 1, status: 'completed', conclusion: 'success', workflowName: 'CI', headSha: 'a', event: 'push',
+    createdAt: '2026-10-01T23:58:40Z', updatedAt: '2026-10-01T23:57:00Z', ...o,
+  })
+  const job = (name: string, status: string, conclusion = ''): Job => ({ name, status, conclusion })
+
+  test('remotes read as gh repo names', async () => {
+    expect(repoSlug('https://github.com/xuanji86/osa-api.git\n')).toBe('xuanji86/osa-api')
+    expect(repoSlug('git@github.com:o/r.git')).toBe('o/r')
+    expect(repoSlug('ssh://git@github.com/o/r')).toBe('o/r')
+    expect(repoSlug('https://ghe.example.com/o/r.git')).toBe('ghe.example.com/o/r')
+    expect(repoSlug('/srv/git/r')).toBeNull()
+  })
+  test('a push report names the refs it updated, not the rejected ones', async () => {
+    const out = [
+      'To github.com:o/r.git',
+      '   6386f32..e4f5a6b  main -> main',
+      ' + 1234567...89abcde feat/x -> feat/x (forced update)',
+      ' * [new branch]      fix -> fix',
+      ' * [new tag]         v1.2.0 -> v1.2.0',
+      ' ! [rejected]        dev -> dev (fetch first)',
+    ].join('\n')
+    expect(pushedRefs(out)).toEqual(['main', 'feat/x', 'fix', 'v1.2.0'])
+    expect(pushedRefs('Everything up-to-date')).toEqual([])
+  })
+  test("the newest commit's runs, schedules left out", async () => {
+    const runs = [run({ databaseId: 9, event: 'schedule', headSha: 'z' }), run({ databaseId: 2, headSha: 'b' }), run({ databaseId: 3, headSha: 'b', event: 'workflow_run' }), run({ databaseId: 1 })]
+    expect(latestGroup(runs).map(r => r.databaseId)).toEqual([2, 3])
+  })
+  test('runs under way show their jobs, a deploy as deploying', async () => {
+    const busy = [run({ status: 'in_progress', conclusion: '' })]
+    expect(ciSummary(busy, [job('test', 'completed', 'success'), job('deploy', 'in_progress')], NOW)).toEqual({ text: '⟳ deploying · 1m20s', state: 'running', busy: true })
+    expect(ciSummary(busy, [job('lint', 'in_progress'), job('test', 'in_progress')], NOW).text).toBe('⟳ lint, test · 1m20s')
+    expect(ciSummary(busy, [], NOW).text).toBe('⟳ queued · 1m20s')
+  })
+  test('finished runs say deployed, passed, failed or cancelled', async () => {
+    const done = [run({})]
+    expect(ciSummary(done, [job('test', 'completed', 'success'), job('deploy', 'completed', 'success')], NOW)).toEqual({ text: '✓ deployed · 3m ago', state: 'ok', busy: false })
+    expect(ciSummary(done, [job('test', 'completed', 'success'), job('deploy', 'completed', 'skipped')], NOW).text).toBe('✓ passed · 3m ago')
+    expect(ciSummary([run({ conclusion: 'failure' })], [job('test', 'completed', 'failure')], NOW)).toEqual({ text: '✗ test failed · 3m ago', state: 'error', busy: false })
+    expect(ciSummary([run({ conclusion: 'failure', workflowName: 'Release' })], [], NOW).text).toBe('✗ Release failed · 3m ago')
+    expect(ciSummary([run({ conclusion: 'cancelled' })], [], NOW)).toEqual({ text: '⊘ cancelled · 3m ago', busy: false })
+  })
+  test('spans read short', async () => {
+    expect([fmtSpan(5_000, true), fmtSpan(80_000, true), fmtSpan(3_725_000, true), fmtSpan(3_725_000, false), fmtSpan(3 * 86_400_000, false)]).toEqual(['5s', '1m20s', '1h02m', '1h', '3d'])
   })
 })
