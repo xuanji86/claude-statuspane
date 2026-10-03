@@ -1,0 +1,4 @@
+# laid by Claude Code when it loads the mod
+.claude-plugin/types/
+/tsconfig.json
+.DS_Store
