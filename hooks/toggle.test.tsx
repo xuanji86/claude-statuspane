@@ -63,8 +63,9 @@ test('the ▾ button hides the card and ◂ status brings it back', async ($, on
 test('the ⚙ page switches a line off, keeps it after closing and stores it', async ($, on) => {
   mock.clock(on)
   const saved: unknown[] = []
-  on('store.get', () => ({ value: undefined }) as never)
-  on('store.set', ($, e) => (saved.push(e), { value: undefined } as never))
+  let stored: unknown
+  on('store.get', () => ({ value: stored }) as never)
+  on('store.set', ($, e) => (saved.push(e), (stored = e.value), { value: undefined } as never))
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'settings' })
   expect(await ui.find({ type: 'Text', text: /Status settings/ })).toBeDefined()
@@ -77,6 +78,26 @@ test('the ⚙ page switches a line off, keeps it after closing and stores it', a
   await ui.unmount()
 })
 
+test("another session's ⚙ change reaches this card, and a press here keeps it", async ($, on) => {
+  const clock = mock.clock(on)
+  const stored: Record<string, unknown> = {} // the one prefs every session's store reads
+  on('store.set', ($, e) => (Object.assign(stored, e.value), { value: undefined } as never))
+  await startSession($, on, stored, () => null)
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeDefined()
+  stored.ctx = false // the other session switched the context bar off
+  await ui.press({ key: 'settings' })
+  await ui.press({ key: 'bar-plus' }) // before this session's poll took it up
+  expect(stored).toMatchObject({ ctx: false, barWidth: 14 })
+  stored.ctx = true
+  await ui.press({ key: 'settings-close' })
+  await clock.advance(2_000)
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeDefined()
+  stored.ctx = false
+  await clock.advance(2_000)
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeUndefined()
+  await ui.unmount()
+})
 
 test('/statuspane says when the terminal is too narrow for the card', async ($, on) => {
   mock.clock(on)

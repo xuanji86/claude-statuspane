@@ -5,7 +5,7 @@
 **A floating status card for Claude Code.**<br>
 Model, context, rate limits, cost and branch at a glance, your GitHub CI and deploys, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.3.2-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.3-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
@@ -34,7 +34,7 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 | **GitHub CI** | The branch's latest Actions run and the runs a push sets off, deploys included ([GitHub CI](#github-ci)) |
 | **Progress rows** | Bars any script or mod can feed, refreshed every second ([Progress API](#progress-api)) |
 | **Clickable** | Hide, show and settings are buttons; everything works with the mouse |
-| **Settings** | Pick the lines you want and the bar width; saved across sessions |
+| **Settings** | Pick the lines you want and the bar width; one set for every session, a change shows in the others within 2 seconds |
 
 It is drawn in Claude Code's own theme colors, so it follows dark, light and colorblind themes: gauges in Claude's
 accent, turning to the theme's warning color from 60 % and its error color from 85 % (context: 50 % / 80 %).

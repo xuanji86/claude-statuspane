@@ -41,6 +41,7 @@ const MAX_PROGRESS_FILES = 20 // the newest by mtime; older, stale files fall ou
 const MAX_PROGRESS_BYTES = 65_536 // fields are cut to length after reading, so a long text only shortens
 const MAX_API_REPORTS = 20
 const DEFAULT_TTL = 300
+const PREFS_POLL_MS = 2_000 // the ⚙ page of another session wrote the store: no watcher, so poll
 const PROGRESS_POLL_MS = 1_000 // no file watcher in the mod API: poll, re-reading only files whose mtime or size moved
 const PROGRESS_DIR_DEFAULT = '.claude/statuspane/progress' // under the home folder
 const CI_TICK_MS = 5_000 // how often the CI poller looks for a target that is due
@@ -319,6 +320,24 @@ const apiReports = new Map<string, { raw: unknown; row: Row | null }>()
 const fileCache = new Map<string, { mtimeMs: number; size: number; row: Row | null }>()
 // What the band last drew at, so /statuspane can say when the card cannot show.
 let lastBand = { columns: Infinity, hasSurvey: false }
+
+// One set of prefs for every session: the store holds it, each press re-reads it before changing one key,
+// and each session polls it. Reads and presses take turns, so a poll never puts back a value a press replaced.
+let prefsTurns: Promise<unknown> = Promise.resolve()
+const prefsTurn = (job: () => Promise<unknown>) => (prefsTurns = prefsTurns.then(job).catch(() => undefined))
+
+const syncPrefs = ($: EngineInterface) =>
+  prefsTurn(async () => {
+    const p = loadPrefs(await $.store.get('prefs'))
+    if (JSON.stringify(p) !== JSON.stringify(await read($, prefs))) await update($, prefs, () => p)
+  })
+
+const changePrefs = ($: EngineInterface, fn: (q: Prefs) => Prefs) =>
+  prefsTurn(async () => {
+    const p = fn(loadPrefs(await $.store.get('prefs')))
+    await $.store.set('prefs', p)
+    await update($, prefs, () => p)
+  })
 
 async function progressDir($: EngineInterface) {
   const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
@@ -622,13 +641,13 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'statuspane', description: 'Hide or show the status card' })
     await update($, compactAsk, () => null) // a press or a run the last module left behind (state outlives a reload)
-    const stored = await $.store.get('prefs').catch(() => undefined)
-    await update($, prefs, () => loadPrefs(stored))
+    await syncPrefs($)
     const model = await $.session.model()
     const usage = fromUsage(await $.session.usage())
     await update($, figures, f => ({ ...f, ...usage, model: model || null }))
     $.clock.every(30_000, () => void refresh($))
     $.clock.every(PROGRESS_POLL_MS, () => void readProgress($))
+    $.clock.every(PREFS_POLL_MS, () => void syncPrefs($))
     $.clock.every(CI_TICK_MS, () => void pollCi($))
     void refresh($).then(() => pollCi($))
     void readProgress($)
@@ -693,8 +712,7 @@ export const register: Register = on => {
     const p = await read($, prefs)
     const setHidden = (hidden: boolean) => update($, isHidden, () => hidden)
     const setSettingsOpen = (open: boolean) => update($, isSettingsOpen, () => open)
-    // update() applies `fn` to the latest value and retries on a race, so two quick presses both land.
-    const change = async (fn: (q: Prefs) => Prefs) => $.store.set('prefs', await update($, prefs, fn))
+    const change = (fn: (q: Prefs) => Prefs) => changePrefs($, fn)
     // Hidden: a one-row button stays at the right edge.
     if (await read($, isHidden))
       return withBelow(

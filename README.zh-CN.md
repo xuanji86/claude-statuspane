@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，能看 GitHub CI 和部署状态，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.3.2-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.3-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
@@ -32,7 +32,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 | **GitHub CI** | 当前分支最新的 Actions 运行，以及推送后触发的运行，包括部署（见 [GitHub CI](#github-ci)） |
 | **进度条接入** | 任何脚本或 mod 都能往卡片上加进度条，每秒刷新（见[进度接口](#进度接口)） |
 | **全程鼠标** | 收起、展开、设置都是按钮 |
-| **设置** | 选择要显示哪些行、进度条长度，跨会话保存 |
+| **设置** | 选择要显示哪些行、进度条长度，所有会话共用一份，在一个会话里改，其他会话 2 秒内跟上 |
 
 配色取自 Claude Code 自己的主题，深色、浅色、色盲友好主题都会跟着变：刻度条平时是 Claude 橙，60% 起变主题的警告色，85% 起变错误色（上下文为 50% / 80%）。
 
