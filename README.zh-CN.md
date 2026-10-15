@@ -5,7 +5,7 @@
 **Claude Code 的浮动状态卡。**<br>
 模型、上下文、额度、花费、分支一眼看清，能看 GitHub CI 和部署状态，还能接入任何脚本的进度条。
 
-[![Version](https://img.shields.io/badge/version-1.3.3-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.4-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
@@ -38,7 +38,7 @@ Claude Code 自带的 `statusLine` 只是 shell 脚本输出的一行文字。**
 
 ## 安装
 
-需要 **Claude Code 2.1.287 或更高版本**（mod，即函数 hooks，从这个版本开始提供）；已在 2.1.288 上测试。mod 目前是早期功能，接口可能随版本变化，如果新版本导致卡片失效，这里会发修复版。
+需要 **Claude Code 2.1.287 或更高版本**（mod，即函数 hooks，从这个版本开始提供）；已在 2.1.300 上测试。mod 目前是早期功能，接口可能随版本变化，如果新版本导致卡片失效，这里会发修复版。
 
 ```text
 /plugin marketplace add xuanji86/claude-statuspane
@@ -55,7 +55,7 @@ claude plugin install statuspane@claude-statuspane
 
 </details>
 
-终端宽度至少 70 列才会显示卡片；桌面版自带这些信息，不显示卡片。它只是新增，不替换任何东西：已经配置的 `statusLine` 会照常显示；只想要卡片的话，把 `~/.claude/settings.json` 里的 `statusLine` 删掉。
+终端宽度至少 70 列才会显示卡片；桌面版自带这些信息，不显示卡片；只有桌面版在画、或者没有任何界面在画的会话也不做任何轮询（不跑 `git`、`gh`）。它只是新增，不替换任何东西：已经配置的 `statusLine` 会照常显示；只想要卡片的话，把 `~/.claude/settings.json` 里的 `statusLine` 删掉。
 
 ## 使用
 

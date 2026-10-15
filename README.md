@@ -5,7 +5,7 @@
 **A floating status card for Claude Code.**<br>
 Model, context, rate limits, cost and branch at a glance, your GitHub CI and deploys, plus progress bars any script can feed.
 
-[![Version](https://img.shields.io/badge/version-1.3.3-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
+[![Version](https://img.shields.io/badge/version-1.3.4-61afef.svg)](https://github.com/xuanji86/claude-statuspane/releases)
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-c678dd.svg)](https://code.claude.com/docs/en/plugins/mods/overview)
 [![License: MIT](https://img.shields.io/badge/license-MIT-98c379.svg)](LICENSE)
 [![validates](https://raw.githubusercontent.com/karanb192/awesome-claude-code-mods/main/badges/xuanji86--claude-statuspane--statuspane-validates.svg)](https://github.com/karanb192/awesome-claude-code-mods)
@@ -41,7 +41,7 @@ accent, turning to the theme's warning color from 60 % and its error color from 
 
 ## Install
 
-Needs **Claude Code 2.1.287 or later**, the release that brought mods (function hooks); tested on 2.1.288. Mods are
+Needs **Claude Code 2.1.287 or later**, the release that brought mods (function hooks); tested on 2.1.300. Mods are
 early access: their API may change between releases, and a release that breaks the card gets a fix here.
 
 ```text
@@ -59,7 +59,7 @@ claude plugin install statuspane@claude-statuspane
 
 </details>
 
-The card appears in terminals at least 70 columns wide; the desktop app shows none, since it has its own. It adds to your setup and replaces nothing:
+The card appears in terminals at least 70 columns wide; the desktop app shows none, since it has its own, and a session only the desktop app draws, or none, polls nothing (no `git`, no `gh`). It adds to your setup and replaces nothing:
 a configured `statusLine` keeps showing; delete it from `~/.claude/settings.json` if you want the
 card alone.
 

@@ -344,9 +344,17 @@ async function progressDir($: EngineInterface) {
   return resolveDir(await $.env.get('STATUSPANE_PROGRESS_DIR'), home)
 }
 
+// Whether a surface that draws the card shows the session: every one but the desktop app, which has its own figures
+// (and attaches only while its window shows the session). Nowhere to draw (a -p run, a desktop session off screen),
+// nothing is polled for it.
+async function drawnHere($: EngineInterface) {
+  return (await $.session.surfaces().catch((): readonly string[] => [])).some(s => s !== 'desktop')
+}
+
 // Never rejects: a missing, unreadable or vanishing folder just means no file rows this poll.
 async function readProgress($: EngineInterface) {
   try {
+    if (!(await drawnHere($))) return
     const now = await $.clock.now()
     const fileRows: Row[] = []
     const dir = await progressDir($)
@@ -415,6 +423,7 @@ async function pressCompact($: EngineInterface) {
 
 async function refresh($: EngineInterface) {
   try {
+    if (!(await drawnHere($))) return
     const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
     const cwd = await $.session.cwd()
     const dir = clean(home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd, 400)
@@ -548,6 +557,7 @@ async function pollCi($: EngineInterface) {
   if (ciBusy) return
   ciBusy = true
   try {
+    if (!(await drawnHere($))) return
     const now = await $.clock.now()
     const p = await read($, prefs)
     if (!p.ciPush) ciWatches.clear()

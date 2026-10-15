@@ -7,7 +7,7 @@ const BAND = {
 } as never
 
 // The world beneath a started session: prefs as stored, git and gh answered by `run`.
-const startSession = async ($: { session: { start: (e: never) => Promise<unknown> } }, on: On, stored: object, run: (argv: string) => string | null, inRepo = false) => {
+const startSession = async ($: { session: { start: (e: never) => Promise<unknown> } }, on: On, stored: object, run: (argv: string) => string | null, inRepo = false, surfaces = ['terminal']) => {
   const done = (stdout: string | null) => ({ value: { exitCode: stdout === null ? 1 : 0, stdout: stdout ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
   on('store.get', () => ({ value: stored }) as never)
   on('command.register', () => ({ value: { command: 'statuspane' } }))
@@ -17,6 +17,7 @@ const startSession = async ($: { session: { start: (e: never) => Promise<unknown
   on('session.repo', () => ({ value: inRepo ? { root: '/w/r' } : null }) as never)
   on('process.run', ($, e) => done(run(e.argv.join(' '))))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.surfaces' as never, () => ({ value: surfaces }) as never) // the REPL's terminal draws the session
   on('tool.call', () => ({ result: { stdout: '', stderr: '   6386f32..e4f5a6b  main -> main', interrupted: false } }) as never)
   mock.env(on, { HOME: '/home/u' })
   await $.session.start({ cwd: '/w/r', surface: null, isInteractive: true } as never)
@@ -209,6 +210,30 @@ test('the branch switch shows the latest run of the branch the session is on', a
   await ui.unmount()
 })
 
+test('in the desktop app, which draws no card, nothing is polled for it', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
+  const ran: string[] = []
+  await startSession($, on, { ciBranch: true }, argv => (ran.push(argv), null), true, ['desktop'])
+  await clock.advance(120_000)
+  expect(ran).toEqual([])
+})
+
+test('where nothing draws the session (a desktop session not on screen, -p), nothing is polled', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
+  const ran: string[] = []
+  await startSession($, on, { ciBranch: true }, argv => (ran.push(argv), null), true, [])
+  await clock.advance(120_000)
+  expect(ran).toEqual([])
+})
+
+test('in a session VS Code alone draws, the card is filled as in a terminal', async ($, on) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-02T00:00:00Z') })
+  const ran: string[] = []
+  await startSession($, on, {}, argv => (ran.push(argv), argv === 'git branch --show-current' ? 'main\n' : null), true, ['vscode'])
+  await clock.advance(31_000)
+  expect(ran).toContain('git branch --show-current')
+})
+
 test('the card says whether Claude is working, in its accent while it is', async ($, on) => {
   mock.clock(on)
   const idle = await $.ui.mount(BAND)
@@ -306,6 +331,7 @@ test('a push follows the repo it reported, not the session folder', async ($, on
     return { value: { exitCode: out === null ? 1 : 0, stdout: out ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.surfaces' as never, () => ({ value: ['terminal'] }) as never) // the REPL's terminal draws the session
   on('tool.call', () => ({ result: { stdout: '', stderr: 'To github.com:o/other.git\n   6386f32..e4f5a6b  main -> main', interrupted: false } }) as never)
   mock.env(on, { HOME: '/home/u' })
   await $.session.start({ cwd: '/w/r', surface: null, isInteractive: true } as never)
