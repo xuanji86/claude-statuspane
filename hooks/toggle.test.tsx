@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, RenderSurface } from 'claude-code'
 
 const BAND = {
   plugin: 'statuspane', surface: 'terminal', component: 'AbovePrompt',
@@ -7,7 +7,7 @@ const BAND = {
 } as never
 
 // The world beneath a started session: prefs as stored, git and gh answered by `run`.
-const startSession = async ($: { session: { start: (e: never) => Promise<unknown> } }, on: On, stored: object, run: (argv: string) => string | null, inRepo = false, surfaces = ['terminal']) => {
+const startSession = async ($: { session: { start: (e: never) => Promise<unknown> } }, on: On, stored: object, run: (argv: string) => string | null, inRepo = false, surfaces: RenderSurface[] = ['terminal']) => {
   const done = (stdout: string | null) => ({ value: { exitCode: stdout === null ? 1 : 0, stdout: stdout ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
   on('store.get', () => ({ value: stored }) as never)
   on('command.register', () => ({ value: { command: 'statuspane' } }))
@@ -17,7 +17,7 @@ const startSession = async ($: { session: { start: (e: never) => Promise<unknown
   on('session.repo', () => ({ value: inRepo ? { root: '/w/r' } : null }) as never)
   on('process.run', ($, e) => done(run(e.argv.join(' '))))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('session.surfaces' as never, () => ({ value: surfaces }) as never) // the REPL's terminal draws the session
+  on('session.surfaces', () => ({ value: surfaces })) // the REPL's terminal draws the session
   on('tool.call', () => ({ result: { stdout: '', stderr: '   6386f32..e4f5a6b  main -> main', interrupted: false } }) as never)
   mock.env(on, { HOME: '/home/u' })
   await $.session.start({ cwd: '/w/r', surface: null, isInteractive: true } as never)
@@ -146,7 +146,7 @@ test('a running CI row counts every second without asking GitHub again', async (
     return null
   })
   const ui = await $.ui.mount(BAND)
-  await $.tool.call({ tool: 'Bash', command: 'git push' } as never)
+  await ($.tool as unknown as { call: (input: object) => Promise<unknown> }).call({ tool: 'Bash', command: 'git push' })
   await clock.advance(1_000)
   expect(await ui.find({ type: 'Text', text: /deploying · 1s/ })).toBeDefined()
   const asked = calls.filter(c => c.startsWith('gh ')).length
@@ -171,7 +171,7 @@ test('a push Claude runs shows its CI run until it finishes, then the result', a
     return null
   })
   const ui = await $.ui.mount(BAND)
-  await $.tool.call({ tool: 'Bash', command: 'git push' } as never)
+  await ($.tool as unknown as { call: (input: object) => Promise<unknown> }).call({ tool: 'Bash', command: 'git push' })
   await clock.advance(1_000)
   expect(await ui.find({ type: 'Text', text: /⟳ deploying/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^r main/ })).toBeDefined()
@@ -188,7 +188,7 @@ test('with the CI switches off, a push calls nothing', async ($, on) => {
   const calls: string[] = []
   await startSession($, on, {}, argv => (calls.push(argv), null))
   const ui = await $.ui.mount(BAND)
-  await $.tool.call({ tool: 'Bash', command: 'git push' } as never)
+  await ($.tool as unknown as { call: (input: object) => Promise<unknown> }).call({ tool: 'Bash', command: 'git push' })
   await clock.advance(70_000)
   expect(calls.filter(c => c.startsWith('gh'))).toEqual([])
   await ui.unmount()
@@ -331,11 +331,11 @@ test('a push follows the repo it reported, not the session folder', async ($, on
     return { value: { exitCode: out === null ? 1 : 0, stdout: out ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
-  on('session.surfaces' as never, () => ({ value: ['terminal'] }) as never) // the REPL's terminal draws the session
+  on('session.surfaces', () => ({ value: ['terminal'] })) // the REPL's terminal draws the session
   on('tool.call', () => ({ result: { stdout: '', stderr: 'To github.com:o/other.git\n   6386f32..e4f5a6b  main -> main', interrupted: false } }) as never)
   mock.env(on, { HOME: '/home/u' })
   await $.session.start({ cwd: '/w/r', surface: null, isInteractive: true } as never)
-  await $.tool.call({ tool: 'Bash', command: 'git -C ../other push' } as never)
+  await ($.tool as unknown as { call: (input: object) => Promise<unknown> }).call({ tool: 'Bash', command: 'git -C ../other push' })
   await clock.advance(1_000)
   expect(calls.some(c => c.startsWith('gh run list -R o/other --branch main'))).toBe(true)
   expect(calls.some(c => c.startsWith('gh run list -R o/r --branch main'))).toBe(false)

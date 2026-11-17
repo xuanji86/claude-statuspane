@@ -27,7 +27,7 @@ prompt, reads Claude Code's own session figures, and can be clicked — no scrip
 | | |
 | --- | --- |
 | **Model · effort** | The model in use, whether Claude is working, and its reasoning effort on a gauge (`▮▮▮▯▯ high`) |
-| **Context** | A gauge with tokens used / window (`▰▰▰▱▱▱ 42% 222k/1M`), and `⟲ compact`: press, then `confirm`, to run `/compact` (after the turn, if Claude is working) |
+| **Context** | A gauge with tokens used / window (`▰▰▰▱▱▱ 42% 222k/1M`), and `⟲ compact`: press, then `confirm`, to run `/compact` (after the turn, if Claude is working) <br>Under it, from the second turn: the last 12 turns' context (`▃▅▇█`), what the last turn added (`▲+12k`), and the room left before auto-compaction (`180k to compact`) |
 | **Rate limits** | 5-hour and 7-day use, each on a small gauge, with reset countdowns (`↻2h41m`) |
 | **Where you are** | Directory and git branch, shortened so the card stays narrow |
 | **Session cost** | What this session has cost so far |

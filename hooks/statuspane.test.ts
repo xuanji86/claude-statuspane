@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { DEFAULT_PREFS, cardLines, compactNow, lineWidth, cardWidth, ciLine, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
+import { DEFAULT_PREFS, cardLines, pushTrend, sparkline, trendParts, compactNow, lineWidth, cardWidth, ciLine, ciSummary, clean, cols, fit, fmtSpan, latestGroup, layout, loadPrefs, mergeRows, pickFiles, prettyModel, pushedRefs, repoSlug, resolveDir, shortDir, toRow } from './register'
 import type { Job, Run } from './register'
 import { gauge } from './register'
 
@@ -242,5 +242,28 @@ describe('review fixes', () => {
   test('emoji terminals draw wide count two columns', async () => {
     expect(['✅', '❌', '⚡', '⭐', '⌛'].map(cols)).toEqual([2, 2, 2, 2, 2])
     expect(cols('✓✗⟳')).toBe(3)
+  })
+})
+
+describe('context trend', () => {
+  test('the history keeps the last 12 turns, and a turn with no reading adds nothing', async () => {
+    const h = Array.from({ length: 12 }, (_, i) => i * 1000)
+    expect(pushTrend(h, 99_000)).toEqual([...h.slice(1), 99_000])
+    expect(pushTrend(undefined, undefined)).toEqual([])
+  })
+  test('bars are relative to the fullest turn shown', async () => {
+    expect(sparkline([10_000, 20_000, 40_000])).toBe('▃▅█')
+    expect(sparkline([0, 0])).toBe('▁▁')
+  })
+  test('the line under the gauge: last turns, what the last one added, room before auto-compaction', async () => {
+    const f = { ...FULL, ctxTokens: 620_000, ctxHistory: [500_000, 520_000, 620_000], ctxCompactAt: 800_000 }
+    expect(text([trendParts(f) ?? []])).toEqual(['    ▇▇█ ▲+100k · 180k to compact'])
+    expect(text(cardLines(f, NOW))[3]).toBe('    ▇▇█ ▲+100k · 180k to compact')
+    expect(trendParts({ ...f, ctxTokens: 760_000 })?.at(-1)?.color).toBe('error') // 95% of the way to compaction
+    expect(text([trendParts({ ...f, ctxHistory: [620_000, 300_000] }) ?? []])).toEqual(['    █▄ ▼-320k · 180k to compact'])
+  })
+  test('nothing to draw: one reading and auto-compaction off', async () => {
+    expect(trendParts({ ...FULL, ctxHistory: [620_000] })).toBeNull()
+    expect(cardLines({ ...FULL, ctxHistory: [620_000] }, NOW)).toHaveLength(5)
   })
 })

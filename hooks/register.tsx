@@ -200,6 +200,37 @@ export const fromUsage = (u: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost
   }
 }
 
+const TREND_TURNS = 12
+const SPARK = '▁▂▃▄▅▆▇█'
+const kTokens = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`)
+
+// The per-turn context history, the newest reading last.
+export const pushTrend = (h: readonly number[] | undefined, tokens: number | undefined): number[] =>
+  tokens === undefined ? [...(h ?? [])] : [...(h ?? []), tokens].slice(-TREND_TURNS)
+
+// Bars relative to the fullest turn shown, so growth shows even at low fill.
+export const sparkline = (h: readonly number[]) => {
+  const max = Math.max(1, ...h)
+  return h.map(n => SPARK[Math.min(SPARK.length - 1, Math.round((n / max) * (SPARK.length - 1)))]).join('')
+}
+
+// The line under the gauge: the last turns, what the last one added, and the room left before auto-compaction.
+export const trendParts = (f: Figures): Part[] | null => {
+  const h = f.ctxHistory ?? []
+  const parts: Part[] = []
+  if (h.length >= 2) {
+    const delta = (h[h.length - 1] ?? 0) - (h[h.length - 2] ?? 0)
+    parts.push({ text: sparkline(h), color: 'claude' })
+    if (delta) parts.push({ text: ` ${delta > 0 ? '▲+' : '▼-'}${kTokens(Math.abs(delta))}`, dim: delta < 0 })
+  }
+  if (f.ctxCompactAt && f.ctxTokens !== undefined) {
+    const used = (f.ctxTokens / f.ctxCompactAt) * 100
+    const color = levelColor(used, 75, 90)
+    parts.push({ text: `${parts.length ? ' · ' : ''}${kTokens(Math.max(0, f.ctxCompactAt - f.ctxTokens))} to compact`, ...(color === 'claude' ? { dim: true } : { color }) })
+  }
+  return parts.length ? [{ text: '    ' }, ...parts] : null
+}
+
 const limit = (label: string, l: Limit | undefined, now: number, showEta: boolean): Part[] => {
   if (!l) return [{ text: `${label} `, dim: true }, { text: PENDING, dim: true }]
   const eta = showEta ? fmtEta(l.resetsAt, now) : ''
@@ -256,13 +287,14 @@ export const cardLines = (f: Figures, now: number, p: Prefs = DEFAULT_PREFS, com
   }
   if (p.ctx) {
     if (f.ctxPct !== undefined) {
-      const k = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`)
-      const tokens = f.ctxTokens !== undefined && f.ctxWindow ? ` ${k(f.ctxTokens)}/${k(f.ctxWindow)}` : ''
+      const tokens = f.ctxTokens !== undefined && f.ctxWindow ? ` ${kTokens(f.ctxTokens)}/${kTokens(f.ctxWindow)}` : ''
       const ctx: Part[] = [{ text: 'ctx ', dim: true }, ...gaugeParts(f.ctxPct, p.barWidth, ctxColor(f.ctxPct)), { text: ` ${Math.round(f.ctxPct)}%`, bold: true }]
       const button = compactParts(compactNow(compact, now))
       // The button stays whole: past the widest card, the tokens give way.
       const withTokens = [...ctx, { text: tokens, dim: true }, ...button]
       lines.push(lineWidth(withTokens) <= MAX_CARD_WIDTH ? withTokens : [...ctx, ...button])
+      const trend = trendParts(f)
+      if (trend) lines.push(trend)
     } else lines.push([{ text: 'ctx ', dim: true }, { text: gauge(0, p.barWidth).off, color: 'subtle' }, { text: ` ${PENDING}`, dim: true }])
   }
   if (p.limits) lines.push([...limit('5h', f.fiveHour, now, p.eta), { text: '   ' }, ...limit('7d', f.week, now, p.eta)])
@@ -601,6 +633,23 @@ async function pollCi($: EngineInterface) {
   }
 }
 
+// The usage figures and the auto-compaction point; `isTurnEnd` adds the reading to the trend. The summary
+// breakdown is estimated locally, with no token-count request. Never rejects.
+async function readUsage($: EngineInterface, isTurnEnd: boolean) {
+  try {
+    const u = await $.session.usage({ breakdown: 'summary' })
+    const b = u.context.breakdown
+    await update($, figures, f => ({
+      ...f,
+      ...fromUsage(u),
+      ...(b && { ctxCompactAt: b.isAutoCompactEnabled ? b.autoCompactThreshold : undefined }),
+      ...(isTurnEnd && { ctxHistory: pushTrend(f.ctxHistory, u.context.tokens) }),
+    }))
+  } catch {
+    // the card keeps what it had
+  }
+}
+
 // A Bash call that pushed or merged: follow the branches it set off. Never rejects.
 async function followPush($: EngineInterface, command: string, output: string) {
   try {
@@ -653,8 +702,8 @@ export const register: Register = on => {
     await update($, compactAsk, () => null) // a press or a run the last module left behind (state outlives a reload)
     await syncPrefs($)
     const model = await $.session.model()
-    const usage = fromUsage(await $.session.usage())
-    await update($, figures, f => ({ ...f, ...usage, model: model || null }))
+    await update($, figures, f => ({ ...f, model: model || null }))
+    await readUsage($, false)
     $.clock.every(30_000, () => void refresh($))
     $.clock.every(PROGRESS_POLL_MS, () => void readProgress($))
     $.clock.every(PREFS_POLL_MS, () => void syncPrefs($))
@@ -672,14 +721,17 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (!e.agentId) void refresh($) // the branch may have moved; subagents' turns leave it be
+    if (!e.agentId) {
+      void refresh($) // the branch may have moved; subagents' turns leave it be
+      void readUsage($, true)
+    }
     return result
   })
 
   // A push or merge Claude ran: its CI runs show until they finish (the `ciPush` switch).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (e.tool === 'Bash' && /\bgit\b[^;&|]*\bpush\b|\bgh\s+pr\s+merge\b/.test(e.command)) {
+    if ('tool' in e && e.tool === 'Bash' && /\bgit\b[^;&|]*\bpush\b|\bgh\s+pr\s+merge\b/.test(e.command)) {
       const out = (result as { result?: { stdout?: unknown; stderr?: unknown } }).result
       void followPush($, e.command, `${out?.stdout ?? ''}\n${out?.stderr ?? ''}`).then(() => pollCi($))
     }
@@ -741,7 +793,7 @@ export const register: Register = on => {
 
     if (await read($, isSettingsOpen))
       return frame(CARD_WIDTH, [
-        <Text color="claude" bold>{STRINGS.settings}</Text>,
+        <Text color="claude" weight="semibold">{STRINGS.settings}</Text>,
         SWITCHES.map(k => (
           <Button key={`pref-${k}`} label={`${p[k] ? '☑' : '☐'} ${STRINGS[k]}`} plain onPress={() => change(q => ({ ...q, [k]: !q[k] }))} />
         )),
@@ -758,7 +810,7 @@ export const register: Register = on => {
 
     const lines = cardLines(await read($, figures), await $.clock.now(), p, await read($, compactAsk))
     const { width, buttonsOwnRow } = layout(lines)
-    const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim} bold={q.bold}>{q.text}</Text>)
+    const runs = (parts: Part[]) => parts.map(q => <Text color={q.color} dimColor={q.dim} weight={q.bold ? 'semibold' : undefined}>{q.text}</Text>)
     const pad = (parts: Part[], room: number) => ' '.repeat(Math.max(0, room - lineWidth(parts)))
     // A line holding a button is a row of its own; the others one Text, cut at the card's edge.
     const row = (parts: Part[], room: number) =>
@@ -768,7 +820,7 @@ export const register: Register = on => {
             q.press ? (
               <Button key={q.press} label={q.text} plain dimColor={q.dim} hover={{ color: 'claude' }} onPress={() => pressCompact($)} />
             ) : (
-              <Text color={q.color} dimColor={q.dim} bold={q.bold}>{q.text}</Text>
+              <Text color={q.color} dimColor={q.dim} weight={q.bold ? 'semibold' : undefined}>{q.text}</Text>
             ),
           )}
           <Text>{pad(parts, room)}</Text>

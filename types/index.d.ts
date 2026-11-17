@@ -42,6 +42,10 @@ export type StatuspaneFigures = {
   ctxPct?: number
   ctxTokens?: number
   ctxWindow?: number
+  /** Context tokens at the end of each main-loop turn, oldest first, the last 12. */
+  ctxHistory?: number[]
+  /** The token count auto-compaction runs at; absent when it is off or not read yet. */
+  ctxCompactAt?: number
   fiveHour?: StatuspaneLimit
   week?: StatuspaneLimit
   costUsd?: number
